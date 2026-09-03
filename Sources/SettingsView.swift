@@ -6,8 +6,15 @@ struct SettingsView: View {
     @State private var shortcuts: [String] = []
     @State private var apps: [(name: String, bundleID: String)] = []
     @State private var entries: [ActionEntry] = []
+    @State private var addingExclusion = false
     @State private var loading = true
     @State private var accessibilityGranted = true
+
+    /// Имя приложения по опознавателю. Удалённое из системы покажем
+    /// самим опознавателем, чтобы его было видно и можно было убрать.
+    private func appName(_ bundleID: String) -> String {
+        apps.first { $0.bundleID == bundleID }?.name ?? bundleID
+    }
 
     private func isAssigned(_ gesture: Gesture) -> Bool {
         !(store.bindings[gesture.rawValue] ?? "").isEmpty
@@ -34,11 +41,47 @@ struct SettingsView: View {
                     Toggle("Enabled", isOn: $store.enabled)
                     Toggle("Launch at login", isOn: $store.launchAtLogin)
                     Toggle("Show icon in the menu bar", isOn: $store.showStatusIcon)
+                    Toggle("Guard against accidental triggers", isOn: $store.falseGuards)
+                    if !store.falseGuards {
+                        Text("Palm rejection and the pause after typing are off.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     if !store.showStatusIcon {
                         Text("Without the icon, reopen the app from Finder to get back here.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                Section("Excluded apps") {
+                    if store.excludedApps.isEmpty {
+                        Text("Gestures work everywhere.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(store.excludedApps, id: \.self) { id in
+                            HStack {
+                                Text(appName(id))
+                                Spacer()
+                                Button {
+                                    store.excludedApps.removeAll { $0 == id }
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    Button("Add app…") { addingExclusion = true }
+                        .controlSize(.small)
+                        .popover(isPresented: $addingExclusion, arrowEdge: .bottom) {
+                            AppChooser(apps: apps,
+                                       exclude: store.excludedApps,
+                                       onPick: { store.excludedApps.append($0) },
+                                       showing: $addingExclusion)
+                        }
                 }
 
                 if loading {

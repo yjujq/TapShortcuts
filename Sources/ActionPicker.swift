@@ -144,3 +144,58 @@ private struct ActionChooser: View {
         showing = false
     }
 }
+
+/// Выбор приложения из установленных, с поиском.
+/// Служит для списка исключений.
+struct AppChooser: View {
+    let apps: [(name: String, bundleID: String)]
+    /// Уже выбранные не показываем: добавлять их повторно незачем.
+    let exclude: [String]
+    let onPick: (String) -> Void
+    @Binding var showing: Bool
+
+    @State private var search = ""
+    @FocusState private var focused: Bool
+
+    private var filtered: [(name: String, bundleID: String)] {
+        apps.filter { app in
+            guard !exclude.contains(app.bundleID) else { return false }
+            guard !search.isEmpty else { return true }
+            return app.name.localizedCaseInsensitiveContains(search)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Search apps", text: $search)
+                    .textFieldStyle(.plain)
+                    .focused($focused)
+                if !search.isEmpty {
+                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(8)
+            Divider()
+
+            List {
+                ForEach(filtered, id: \.bundleID) { app in
+                    Button(app.name) {
+                        onPick(app.bundleID)
+                        showing = false
+                    }
+                    .buttonStyle(.plain)
+                }
+                if filtered.isEmpty {
+                    Text("Nothing found").foregroundStyle(.secondary)
+                }
+            }
+            .listStyle(.inset)
+        }
+        .frame(width: 280, height: 320)
+        .onAppear { focused = true }
+    }
+}

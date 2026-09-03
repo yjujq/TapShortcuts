@@ -18,12 +18,27 @@ final class Store: ObservableObject {
         didSet { defaults.set(showStatusIcon, forKey: "showStatusIcon") }
     }
 
+    /// Защита от ложных срабатываний: отсев ладони, молчание при наборе
+    /// текста и при зажатой кнопке мыши.
+    @Published var falseGuards = true {
+        didSet { defaults.set(falseGuards, forKey: "falseGuards") }
+    }
+
+    /// Приложения, в которых жесты не срабатывают, по опознавателям.
+    ///
+    /// Нужны там, где трекпад занят своим: чертёжные и игровые программы
+    /// толкуют многопальцевые касания сами, и наш перехват им мешает.
+    @Published var excludedApps: [String] = [] {
+        didSet { defaults.set(excludedApps, forKey: excludedKey) }
+    }
+
     @Published var launchAtLogin = false {
         didSet { LoginItem.set(launchAtLogin) }
     }
 
     private let defaults = UserDefaults.standard
     private let key = "bindings.v2"
+    private let excludedKey = "excludedApps.v1"
 
     private init() {
         enabled = defaults.object(forKey: "enabled") as? Bool ?? true
@@ -44,7 +59,21 @@ final class Store: ObservableObject {
             ]
             defaults.set(bindings, forKey: key)
         }
+        falseGuards = defaults.object(forKey: "falseGuards") as? Bool ?? true
+        excludedApps = defaults.stringArray(forKey: excludedKey) ?? []
         launchAtLogin = LoginItem.isEnabled
+    }
+
+    /// Исключено ли приложение, которое сейчас впереди.
+    ///
+    /// Спрашиваем систему в момент жеста, а не следим за сменой приложения:
+    /// жесты редки, а слежение означало бы лишнюю подписку на каждое
+    /// переключение окна.
+    var frontmostIsExcluded: Bool {
+        guard !excludedApps.isEmpty,
+              let id = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        else { return false }
+        return excludedApps.contains(id)
     }
 
     func action(for gesture: Gesture) -> Action {

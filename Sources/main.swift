@@ -29,9 +29,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Передаём готовый набор, а не способ спросить: разбор идёт в потоке
         // трекпада, и обращаться оттуда к настройкам нельзя.
         updateBoundGestures()
+        TouchWatcher.shared.setGuardsEnabled(store.falseGuards)
         bindingsWatch = store.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { self?.updateBoundGestures() }
+                MainActor.assumeIsolated {
+                    self?.updateBoundGestures()
+                    if let on = self?.store.falseGuards {
+                        TouchWatcher.shared.setGuardsEnabled(on)
+                    }
+                }
             }
         }
         TouchWatcher.shared.start()
@@ -57,7 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handle(_ gesture: Gesture) {
-        guard store.enabled else { return }
+        guard store.enabled, !store.frontmostIsExcluded else { return }
         let action = store.action(for: gesture)
         if case .none = action { return }
         action.run()
