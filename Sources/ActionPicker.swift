@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Одно доступное действие в общем перечне.
+/// A single available action in the shared catalogue.
 struct ActionEntry: Identifiable, Hashable {
     let tag: String
     let title: String
@@ -8,8 +8,8 @@ struct ActionEntry: Identifiable, Hashable {
     var id: String { tag }
 }
 
-/// Общий перечень действий. Собирается один раз при открытии настроек
-/// и служит и для показа назначенного, и для поиска.
+/// The shared catalogue of actions. Built once when settings open and used
+/// both to display the current binding and to search.
 enum ActionCatalogue {
     static func all(shortcuts: [String],
                     apps: [(name: String, bundleID: String)]) -> [ActionEntry] {
@@ -31,8 +31,8 @@ enum ActionCatalogue {
         return entries
     }
 
-    /// Как назвать назначенное. Для вписанных вручную команд оболочки
-    /// и сценариев показываем их самих — в перечне их нет.
+    /// How to name the current binding. Hand-written shell commands and
+    /// scripts are shown as themselves — they are not in the catalogue.
     static func title(of tag: String, in entries: [ActionEntry]) -> String {
         if tag.isEmpty { return "— none —" }
         if let found = entries.first(where: { $0.tag == tag }) { return found.title }
@@ -42,8 +42,8 @@ enum ActionCatalogue {
     }
 }
 
-/// Строка жеста: слева название, справа назначенное действие.
-/// Щелчок по действию открывает окошко выбора с поиском.
+/// A gesture row: the name on the left, the bound action on the right.
+/// Clicking the action opens a chooser with search.
 struct ActionPicker: View {
     let gesture: Gesture
     @Binding var tag: String
@@ -54,8 +54,8 @@ struct ActionPicker: View {
     var body: some View {
         HStack {
             if gesture.conflictsWithSystem {
-                // Помечаем занятые системой: назначить можно, но срабатывать
-                // будет не всегда.
+                // Mark the ones the system claims: they can be bound, but
+                // they will not always fire.
                 Label(gesture.title, systemImage: "exclamationmark.triangle")
             } else {
                 Text(gesture.title)
@@ -81,8 +81,8 @@ struct ActionPicker: View {
     }
 }
 
-/// Окошко выбора: поле поиска и отобранный список рядом, так что видно,
-/// что именно нашлось.
+/// The chooser: a search field and the filtered list side by side, so what
+/// was found is visible.
 private struct ActionChooser: View {
     let entries: [ActionEntry]
     @Binding var tag: String
@@ -145,11 +145,11 @@ private struct ActionChooser: View {
     }
 }
 
-/// Выбор приложения из установленных, с поиском.
-/// Служит для списка исключений.
+/// Picking an application from the installed ones, with search.
+/// Used for the exclusion list.
 struct AppChooser: View {
     let apps: [(name: String, bundleID: String)]
-    /// Уже выбранные не показываем: добавлять их повторно незачем.
+    /// Already chosen ones are hidden: there is no point adding them twice.
     let exclude: [String]
     let onPick: (String) -> Void
     @Binding var showing: Bool

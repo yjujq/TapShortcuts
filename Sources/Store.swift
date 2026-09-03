@@ -1,11 +1,11 @@
 import AppKit
 
-/// Настройки: какому жесту какая команда назначена.
+/// Settings: which action is bound to which gesture.
 @MainActor
 final class Store: ObservableObject {
     static let shared = Store()
 
-    /// Жест -> имя команды. Пустое имя означает «жест не занят».
+    /// Gesture -> action tag. An empty tag means the gesture is unbound.
     @Published var bindings: [String: String] = [:] {
         didSet { defaults.set(bindings, forKey: key) }
     }
@@ -18,16 +18,17 @@ final class Store: ObservableObject {
         didSet { defaults.set(showStatusIcon, forKey: "showStatusIcon") }
     }
 
-    /// Защита от ложных срабатываний: отсев ладони, молчание при наборе
-    /// текста и при зажатой кнопке мыши.
+    /// Guards against accidental triggers: palm rejection, plus silence while
+    /// typing and while a mouse button is held.
     @Published var falseGuards = true {
         didSet { defaults.set(falseGuards, forKey: "falseGuards") }
     }
 
-    /// Приложения, в которых жесты не срабатывают, по опознавателям.
+    /// Applications where gestures do not fire, by bundle identifier.
     ///
-    /// Нужны там, где трекпад занят своим: чертёжные и игровые программы
-    /// толкуют многопальцевые касания сами, и наш перехват им мешает.
+    /// Needed where the trackpad is already spoken for: drawing tools and
+    /// games interpret multi-finger touches themselves, and our interception
+    /// gets in their way.
     @Published var excludedApps: [String] = [] {
         didSet { defaults.set(excludedApps, forKey: excludedKey) }
     }
@@ -43,12 +44,12 @@ final class Store: ObservableObject {
     private init() {
         enabled = defaults.object(forKey: "enabled") as? Bool ?? true
         showStatusIcon = defaults.object(forKey: "showStatusIcon") as? Bool ?? true
-        // По умолчанию заняты только два боковых жеста — с них и начали.
+        // Only the two side gestures are bound by default; they came first.
         //
-        // Пустой словарь считаем ненастроенным наравне с отсутствующим:
-        // иначе однажды записанная пустота навсегда отменила бы значения
-        // по умолчанию. И записываем явно — наблюдатель свойства внутри
-        // инициализатора не срабатывает.
+        // An empty dictionary counts as unconfigured, same as a missing one:
+        // otherwise emptiness written once would cancel the defaults forever.
+        // And we write explicitly — a property observer does not fire inside
+        // the initialiser.
         let stored = defaults.dictionary(forKey: key) as? [String: String]
         if let stored, !stored.isEmpty {
             bindings = stored
@@ -64,11 +65,11 @@ final class Store: ObservableObject {
         launchAtLogin = LoginItem.isEnabled
     }
 
-    /// Исключено ли приложение, которое сейчас впереди.
+    /// Whether the frontmost application is excluded.
     ///
-    /// Спрашиваем систему в момент жеста, а не следим за сменой приложения:
-    /// жесты редки, а слежение означало бы лишнюю подписку на каждое
-    /// переключение окна.
+    /// We ask the system at the moment of the gesture rather than watching
+    /// for app changes: gestures are rare, and watching would mean a needless
+    /// subscription to every window switch.
     var frontmostIsExcluded: Bool {
         guard !excludedApps.isEmpty,
               let id = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
@@ -80,8 +81,8 @@ final class Store: ObservableObject {
         Action.decode(bindings[gesture.rawValue] ?? "")
     }
 
-    /// Нужен ли доступ к Универсальному управлению: только для сочетаний
-    /// клавиш. Запуск быстрых команд обходится без него.
+    /// Whether Accessibility access is needed: only for key combinations.
+    /// Running shortcuts does without it.
     var needsAccessibility: Bool {
         bindings.values.contains { $0.hasPrefix("keys:") }
     }

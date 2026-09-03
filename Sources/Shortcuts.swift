@@ -1,10 +1,10 @@
 import Foundation
 
-/// Работа с быстрыми командами через входящую в систему программу `shortcuts`.
+/// Running Shortcuts through the system's own `shortcuts` tool.
 ///
-/// Схема адреса `shortcuts://run-shortcut` тоже существует, но она выводит
-/// на передний план само приложение «Быстрые команды». Через программу
-/// запуск происходит тихо, а это для жеста и нужно.
+/// The `shortcuts://run-shortcut` URL scheme exists too, but it brings the
+/// Shortcuts app itself to the front. Going through the tool runs the shortcut
+/// quietly, which is what a gesture needs.
 enum Shortcuts {
     private static let binary = "/usr/bin/shortcuts"
 
@@ -12,8 +12,8 @@ enum Shortcuts {
         FileManager.default.isExecutableFile(atPath: binary)
     }
 
-    /// Список установленных команд. Читается при открытии настроек,
-    /// а не постоянно: вызов недешёвый.
+    /// The list of installed shortcuts. Read when settings open rather than
+    /// continuously: the call is not cheap.
     static func list() -> [String] {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: binary)
@@ -31,13 +31,13 @@ enum Shortcuts {
                 .filter { !$0.isEmpty }
                 .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         } catch {
-            NSLog("TapShortcuts: не удалось получить список команд: \(error)")
+            NSLog("TapShortcuts: could not read the list of shortcuts: \(error)")
             return []
         }
     }
 
-    /// Запуск по имени. Не ждём завершения: команда может работать долго,
-    /// а жест должен отпускать нас сразу.
+    /// Run one by name. We do not wait for it to finish: a shortcut can run
+    /// for a long time, and a gesture must let go of us at once.
     static func run(_ name: String) {
         guard !name.isEmpty else { return }
         let task = Process()
@@ -46,7 +46,7 @@ enum Shortcuts {
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
         do { try task.run() } catch {
-            NSLog("TapShortcuts: команда «\(name)» не запустилась: \(error)")
+            NSLog("TapShortcuts: shortcut \"\(name)\" failed to start: \(error)")
         }
     }
 }

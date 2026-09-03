@@ -1,7 +1,7 @@
 import ServiceManagement
 
-/// Автозапуск. SMAppService умеет это без вспомогательной программы,
-/// но требует, чтобы приложение лежало в папке «Программы».
+/// Launch at login. SMAppService handles this without a helper tool, but it
+/// requires the app to live in the Applications folder.
 enum LoginItem {
     static var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
 
@@ -13,7 +13,7 @@ enum LoginItem {
                 if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
             }
         } catch {
-            NSLog("TapShortcuts: не удалось изменить автозапуск: \(error)")
+            NSLog("TapShortcuts: could not change the login item: \(error)")
         }
     }
 }

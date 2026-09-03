@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 import Combine
 
-/// TapShortcuts — постукивание несколькими пальцами по трекпаду
-/// запускает быструю команду. Живёт в строке меню, без окна и без дока.
+/// TapShortcuts — a multi-finger tap on the trackpad runs an action.
+/// Lives in the menu bar, with no window and no Dock icon.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = Store.shared
@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyIconVisibility()
-        // Значок можно убрать из строки меню, поэтому следим за настройкой.
+        // The icon can be removed from the menu bar, so watch the setting.
         iconWatch = store.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.applyIconVisibility() }
@@ -24,10 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         TouchWatcher.shared.onGesture = { [weak self] gesture in
             MainActor.assumeIsolated { self?.handle(gesture) }
         }
-        // Двойное постукивание требует придержать одиночное — сообщаем
-        // распознавателю, какие жесты заняты, чтобы не задерживать зря.
-        // Передаём готовый набор, а не способ спросить: разбор идёт в потоке
-        // трекпада, и обращаться оттуда к настройкам нельзя.
+        // A double tap requires holding back the single one, so tell the
+        // recogniser which gestures are bound and avoid delaying for nothing.
+        // We hand over a ready set rather than a way to ask: recognition runs
+        // on the trackpad thread, and settings must not be touched from there.
         updateBoundGestures()
         TouchWatcher.shared.setGuardsEnabled(store.falseGuards)
         bindingsWatch = store.objectWillChange.sink { [weak self] _ in
@@ -48,8 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         TouchWatcher.shared.stop()
     }
 
-    /// Повторный запуск из Finder открывает настройки — иначе к ним
-    /// не вернуться, если значок в строке меню не замечен.
+    /// Relaunching from Finder opens settings — otherwise there is no way
+    /// back to them if the menu bar icon went unnoticed.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         togglePopover()
         return true
@@ -70,8 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         flash()
     }
 
-    /// Короткая отметка в строке меню: без неё непонятно, засчитан ли жест,
-    /// особенно когда сама команда ничего видимого не делает.
+    /// A brief flash in the menu bar: without it there is no telling whether
+    /// the gesture registered, especially when the action does nothing visible.
     private func flash() {
         guard let button = statusItem?.button else { return }
         button.appearsDisabled = true
@@ -80,9 +80,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Значок появляется и снимается по настройке. Когда его нет, вернуться
-    /// к настройкам можно повторным запуском из Finder — это обрабатывается
-    /// в applicationShouldHandleReopen.
+    /// The icon appears and disappears with the setting. When it is gone,
+    /// settings are reachable by relaunching from Finder — handled in
+    /// applicationShouldHandleReopen.
     private func applyIconVisibility() {
         if store.showStatusIcon {
             if statusItem == nil { setUpStatusItem() }
@@ -107,8 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func togglePopover() {
         guard let button = statusItem?.button else {
-            // Значка нет — показываем настройки отдельным окном, иначе
-            // к ним было бы не подступиться вовсе.
+            // No icon, so show settings in a window of their own; otherwise
+            // there would be no way to reach them at all.
             SettingsWindow.show()
             return
         }
@@ -123,12 +123,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 let app = NSApplication.shared
 
-// Делегат обязан жить в глобальной переменной: NSApplication держит его
-// слабой ссылкой, и внутри замыкания он был бы сразу освобождён.
+// The delegate must live in a global: NSApplication holds it weakly, and
+// inside a closure it would be released immediately.
 let delegate: AppDelegate = MainActor.assumeIsolated { AppDelegate() }
 
 MainActor.assumeIsolated {
     app.delegate = delegate
-    app.setActivationPolicy(.accessory)   // без иконки в доке
+    app.setActivationPolicy(.accessory)   // no Dock icon
     app.run()
 }

@@ -1,13 +1,13 @@
 import AppKit
 
-/// Отправка сочетания клавиш.
+/// Sending a key combination.
 ///
-/// В отличие от запуска быстрой команды это требует доступа к Универсальному
-/// управлению: синтетические нажатия система пропускает только доверенным
-/// приложениям. Без доступа вызов молча ничего не сделает.
+/// Unlike running a shortcut, this needs Accessibility access: the system
+/// only lets trusted applications post synthetic key events. Without it the
+/// call silently does nothing.
 enum KeyCombo {
-    /// Записывается строкой вида «cmd+w» или «cmd+shift+t».
-    /// Разбор здесь же, чтобы настройка оставалась читаемой в plist.
+    /// Written as a string such as "cmd+w" or "cmd+shift+t".
+    /// Parsed here so the setting stays readable in the plist.
     private static let keyCodes: [String: CGKeyCode] = [
         "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7,
         "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
@@ -23,7 +23,7 @@ enum KeyCombo {
             .split(separator: "+")
             .map { $0.trimmingCharacters(in: .whitespaces) }
         guard let last = parts.last, let code = keyCodes[last] else {
-            NSLog("TapShortcuts: непонятное сочетание «\(description)»")
+            NSLog("TapShortcuts: unrecognised combination \"\(description)\"")
             return
         }
 
@@ -34,16 +34,16 @@ enum KeyCombo {
             case "shift":           flags.insert(.maskShift)
             case "ctrl", "control": flags.insert(.maskControl)
             case "alt", "opt", "option": flags.insert(.maskAlternate)
-            default: NSLog("TapShortcuts: неизвестный модификатор «\(part)»")
+            default: NSLog("TapShortcuts: unknown modifier \"\(part)\"")
             }
         }
 
         guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
 
-        // Модификаторы нажимаем и отпускаем по-настоящему, а не только
-        // выставляем флаг на самой клавише. Для ⌘W разницы нет, но
-        // переключатель приложений ждёт именно отпускания Command, иначе
-        // остаётся висеть на экране вместо того, чтобы совершить переход.
+        // Press and release the modifiers for real rather than only setting
+        // a flag on the key itself. It makes no difference for ⌘W, but the app
+        // switcher waits precisely for Command to be released; otherwise it
+        // stays on screen instead of completing the switch.
         let modifierKeys: [(CGEventFlags, CGKeyCode)] = [
             (.maskCommand, 55), (.maskShift, 56), (.maskAlternate, 58), (.maskControl, 59),
         ]
@@ -65,9 +65,9 @@ enum KeyCombo {
         }
     }
 
-    /// Готовый набор для выбора в настройках. Список короткий намеренно:
-    /// он покрывает обиходное, а необычное вписывается прямо в настройках
-    /// системы через ключ bindings.v2.
+    /// A ready set to choose from in settings. The list is deliberately
+    /// short: it covers the everyday cases, while unusual ones are written
+    /// straight into the defaults under the bindings.v2 key.
     static let presets: [(title: String, combo: String)] = [
         ("⌘W — close",            "cmd+w"),
         ("⌘⇥ — switch app",       "cmd+tab"),
@@ -82,8 +82,8 @@ enum KeyCombo {
     ]
 }
 
-/// Что жест делает. Хранится одной строкой, чтобы настройка оставалась
-/// простой: «keys:cmd+w» или «shortcut:Wi-Fi On/Off».
+/// What a gesture does. Stored as a single string to keep the setting
+/// simple: "keys:cmd+w" or "shortcut:Wi-Fi On/Off".
 enum Action {
     case none
     case keys(String)
@@ -91,9 +91,9 @@ enum Action {
     case previousApp
     case system(SystemAction)
     case app(String)
-    /// Команда оболочки и сценарий AppleScript в настройках не выбираются:
-    /// для них нужно поле ввода, а список и так длинный. Вписываются вручную
-    /// ключом bindings.v2 — «shell:…» или «script:…».
+    /// Shell commands and AppleScript are not offered in settings: they need
+    /// a text field and the list is long enough already. They are written by
+    /// hand under bindings.v2 as "shell:…" or "script:…".
     case shell(String)
     case script(String)
 
@@ -108,7 +108,7 @@ enum Action {
         if raw.hasPrefix("script:") { return .script(String(raw.dropFirst(7))) }
         if raw.hasPrefix("keys:") { return .keys(String(raw.dropFirst(5))) }
         if raw.hasPrefix("shortcut:") { return .shortcut(String(raw.dropFirst(9))) }
-        // Записи первых сборок хранили просто имя команды.
+        // Entries from the earliest builds stored just the shortcut name.
         return .shortcut(raw)
     }
 
@@ -118,10 +118,11 @@ enum Action {
         case .keys(let combo): KeyCombo.send(combo)
         case .shortcut(let name): Shortcuts.run(name)
         case .previousApp:
-            // Явный переход на главный поток, а не утверждение о нём.
-            // Сегодня сюда попадают только с главного, но утверждение
-            // молча превратилось бы в падение, начни кто-то звать иначе —
-            // именно так приложение и падало на разборе жестов.
+            // An explicit hop to the main thread rather than an assertion
+            // about it. Today we only get here from the main thread, but the
+            // assertion would quietly turn into a crash if someone called it
+            // otherwise — that is exactly how the app crashed during gesture
+            // recognition.
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { AppSwitcher.shared.switchToPrevious() }
             }
@@ -139,7 +140,7 @@ enum Action {
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
         do { try task.run() } catch {
-            NSLog("TapShortcuts: не удалось выполнить \(tool): \(error)")
+            NSLog("TapShortcuts: could not run \(tool): \(error)")
         }
     }
 }

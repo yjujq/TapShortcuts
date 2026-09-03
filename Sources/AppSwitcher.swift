@@ -1,10 +1,11 @@
 import AppKit
 
-/// Переход к предыдущему приложению без переключателя.
+/// Switching to the previous application without the app switcher.
 ///
-/// Через ⌘⇥ это делается плохо: системный переключатель ждёт отпускания
-/// Command и показывает свою полосу значков. Здесь мы просто помним, что было
-/// впереди до нынешнего, и активируем его — мгновенно и без лишней картинки.
+/// Doing it with ⌘⇥ works badly: the system switcher waits for Command to be
+/// released and shows its row of icons. Here we simply remember what was
+/// frontmost before the current app and activate it — instantly and with no
+/// extra visuals.
 @MainActor
 final class AppSwitcher {
     static let shared = AppSwitcher()
@@ -30,8 +31,8 @@ final class AppSwitcher {
     }
 
     private func record(_ app: NSRunningApplication) {
-        // Себя в историю не пишем: открытие настроек не должно вытеснять
-        // из неё то приложение, к которому потом захотят вернуться.
+        // Do not record ourselves: opening settings must not push out the
+        // application the user will want to come back to.
         guard app.processIdentifier != NSRunningApplication.current.processIdentifier else { return }
         guard app != current else { return }
         previous = current

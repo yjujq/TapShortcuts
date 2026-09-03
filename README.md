@@ -1,199 +1,206 @@
 # TapShortcuts
 
-Жесты на трекпаде запускают действия в macOS. Постучал тремя пальцами —
-открылась быстрая команда; положил палец и постучал рядом справа — закрылось
-окно. Живёт в строке меню, без окна и без иконки в доке.
+Trackpad gestures run actions on macOS. Tap with three fingers and a shortcut
+opens; hold one finger and tap to its right and the window closes. Lives in the
+menu bar, with no window and no Dock icon.
 
-Swift, только AppKit и SwiftUI, без сторонних зависимостей. Проверено на
+Swift, AppKit and SwiftUI only, no third-party dependencies. Tested on a
 MacBook Pro M3 Pro, macOS 26.
 
-## Жесты
+## Gestures
 
-Различается **39 жестов** в восьми семействах:
+**39 gestures** are recognised, in eight families:
 
-| Семейство | Что входит |
+| Family | What it covers |
 |---|---|
-| Постукивание | 2, 3, 4, 5 пальцами |
-| Двойное постукивание | 2, 3, 4 пальцами |
-| Удержание | 2, 3, 4 пальца дольше 0.6 с |
-| Тап при опорном пальце | слева и справа, при одном опорном и при двух |
-| Смахивание | 3, 4, 5 пальцами в четыре стороны |
-| Сведение и разведение | 2, 3, 4 пальцами |
-| Поворот | по часовой и против |
-| Постукивание в углу | четыре угла, одним пальцем |
+| Tap | 2, 3, 4, 5 fingers |
+| Double tap | 2, 3, 4 fingers |
+| Hold | 2, 3, 4 fingers for longer than 0.6 s |
+| Tap beside a held finger | left and right, with one anchor or two |
+| Swipe | 3, 4, 5 fingers in four directions |
+| Pinch in and out | 2, 3, 4 fingers |
+| Rotate | clockwise and anticlockwise |
+| Corner tap | four corners, one finger |
 
-Девять из них **занимает система** — смахивания тремя и четырьмя пальцами,
-тап двумя, масштаб, поворот. Назначить их можно, но срабатывать они будут
-не всегда: часть событий macOS перехватывает раньше нас. Такие помечены
-значком предупреждения.
+Nine of them are **claimed by the system** — three- and four-finger swipes, the
+two-finger tap, zoom and rotation. They can still be bound, but they will not
+always fire: macOS takes some of those events before we see them. Such gestures
+are marked with a warning symbol.
 
-### Тап при опорном пальце
+### Tap beside a held finger
 
-Жест из двух касаний: один палец лежит, другой постукивает рядом. Сторона
-определяется сравнением с положением опорного пальца.
+A gesture of two contacts: one finger rests while another taps next to it. The
+side is decided by comparing against the anchor finger's position.
 
-От системного вторичного щелчка и от обычной прокрутки отделяется тремя
-обязательными условиями:
+It is separated from the system's secondary click, and from ordinary scrolling,
+by three required conditions:
 
-- опорный палец лёг **не менее чем за 0.25 с** до касания;
-- опорный палец **неподвижен** — при прокрутке едут оба, и без этой проверки
-  едущий сходил за опорный;
-- в касании **не было заметного движения** вовсе.
+- the anchor landed **at least 0.09 s** before the tap;
+- the anchor is **still** — in scrolling both fingers travel, and without this
+  check a travelling one passed for an anchor;
+- there was **no noticeable motion** in the touch at all.
 
-Первый порог сперва был 0.09 с и оказался мал: при обычной прокрутке пальцы
-опускаются с разницей в десятую долю секунды, и первый ошибочно записывался
-в опорные. На тап справа было назначено ⌘W, поэтому ложное срабатывание сразу
-закрывало окно.
+The first threshold was raised to 0.25 s at one point and turned out to silence
+the gesture entirely: the anchor usually rests longer than `tapDuration`, so an
+inflated lead does not soften the trigger, it removes it. It now sits at a safe
+minimum above the spread seen in ordinary scrolling.
 
-## Действия
+## Actions
 
-На каждый жест назначается одно из:
+Each gesture can be bound to one of:
 
-- **19 системных действий** — Mission Control, App Exposé, Launchpad, рабочий
-  стол, переход между рабочими столами, блокировка, гашение экрана,
-  воспроизведение и треки, громкость, яркость, снимки экрана, тёмное
-  оформление;
-- **переход к предыдущему приложению** — напрямую, без переключателя;
-- **сочетание клавиш** — десяток ходовых в списке;
-- **открытие приложения** — любое установленное;
-- **быстрая команда** — любая из установленных в системе.
+- **19 system actions** — Mission Control, App Exposé, Launchpad, Show Desktop,
+  moving between spaces, lock screen, sleep display, playback and tracks,
+  volume, brightness, screenshots, dark mode;
+- **previous application** — directly, without the switcher;
+- **a key combination** — a dozen common ones in the list;
+- **opening an application** — any that is installed;
+- **a shortcut** — any installed in the system.
 
-Выбор идёт через окошко с поиском: щёлкаешь по назначенному действию,
-печатаешь часть названия, список отбирается на глазах.
+Choosing goes through a chooser with search: click the bound action, type part
+of a name, and the list narrows as you type.
 
-Занятые жесты вынесены в раздел наверху, свободные остаются в своих
-семействах — так не приходится искать назначенное среди четырёх десятков.
+Bound gestures are lifted into a section at the top while free ones stay in
+their families, so there is no hunting for the bound ones among four dozen rows.
 
-### Своя команда и сценарий
+### Shell commands and scripts
 
-В списке их нет — для них нужно поле ввода, а перечень и без того длинный.
-Вписываются вручную:
+They are not in the list — they need a text field and the list is long enough
+already. They are written by hand:
 
 ```bash
 defaults write local.tapshortcuts bindings.v2 -dict-add tap4 "shell:open -a Terminal"
-defaults write local.tapshortcuts bindings.v2 -dict-add tap5 "script:display notification \"привет\""
+defaults write local.tapshortcuts bindings.v2 -dict-add tap5 "script:display notification \"hello\""
 ```
 
-Работают приставки `shell:` и `script:`.
+The prefixes `shell:` and `script:` are recognised.
 
-## Исключения
+## Exclusions
 
-Приложения, в которых жесты не срабатывают, задаются списком в настройках.
-Нужны там, где трекпад занят своим: чертёжные и игровые программы толкуют
-многопальцевые касания сами, и перехват им мешает.
+Applications where gestures do not fire are listed in settings. They are needed
+where the trackpad is already spoken for: drawing tools and games interpret
+multi-finger touches themselves, and interception gets in their way.
 
-Приложение впереди спрашивается у системы **в момент жеста**, а не
-отслеживается постоянно: жесты редки, а слежение означало бы подписку на
-каждое переключение окна. При пустом списке проверка обрывается сразу
-и к системе не обращается вовсе.
+The frontmost application is asked of the system **at the moment of the
+gesture** rather than tracked continuously: gestures are rare, and tracking
+would mean subscribing to every window switch. With an empty list the check
+returns immediately and never touches the system at all.
 
-Удалённое из системы приложение остаётся в списке и показывается своим
-опознавателем вместо имени — так его видно и можно убрать. Молча пропадать
-ему нельзя: это выглядело бы как самовольное изменение настроек.
+An application removed from the system stays in the list and is shown by its
+bundle identifier instead of a name — so it remains visible and removable.
+Disappearing quietly is not an option: that would look like settings changing
+by themselves.
 
-## Защита от ложных срабатываний
+## Guards against accidental triggers
 
-Четыре заслона, все включаются одним переключателем в настройках.
+Four guards, all turned on by a single switch in settings.
 
-**Отсев ладони.** Механизм отдаёт размер пятна касания, и у ладони он в разы
-больше, чем у подушечки пальца. Всё крупнее порога отбрасывается до всякого
-разбора: иначе лежащая на трекпаде рука считалась бы пальцами и превращала
-любое касание в многопальцевый жест. Заодно отсеиваются призраки — слишком
-слабые касания от пальца, зависшего над поверхностью.
+**Palm rejection.** The framework reports the size of each contact, and a palm's
+is several times larger than a fingertip's. Anything above the threshold is
+discarded before any analysis: otherwise a hand resting on the trackpad would
+count as fingers and turn every touch into a multi-finger gesture. Ghosts are
+filtered out too — contacts too faint to be a real touch.
 
-**Одновременность приземления.** Пальцы настоящего постукивания опускаются
-почти разом. Рука, легшая вразнобой, даёт то же число пальцев, но растянутое
-во времени; порог — 0.12 с между первым и последним.
+**Landing simultaneity.** The fingers of a real tap land almost together. A hand
+settling piecemeal gives the same finger count but stretched in time; the
+threshold is 0.12 s between the first and the last.
 
-**Молчание при наборе текста.** При печати руки задевают трекпад постоянно,
-и почти всякое касание там ложное. После нажатия клавиши жесты молчат 0.6 с.
+**Silence while typing.** While typing, hands brush the trackpad constantly and
+almost every contact is accidental. Gestures stay silent for 0.6 s after a key
+press.
 
-Время с последнего нажатия спрашивается у системы через
-`CGEventSource.secondsSinceLastEventType`. Это открытое средство и особых
-разрешений не требует — в отличие от слежения за клавиатурой, которое
-потребовало бы «Мониторинг ввода».
+The time since the last key press is asked of the system through
+`CGEventSource.secondsSinceLastEventType`. That is a public facility and needs
+no special permission — unlike watching the keyboard, which would require Input
+Monitoring.
 
-**Молчание при зажатой кнопке.** Нажатая кнопка означает перетаскивание или
-выделение — многопальцевые касания там к жестам отношения не имеют.
+**Silence while a button is held.** A held button means dragging or selecting,
+where multi-finger contacts have nothing to do with gestures.
 
-## Устройство
+Taps beside a held finger are exempt from the last guard: the tap physically
+coincides with the system's tap-to-click, and the OS generates its own click for
+the same contact. `pressedMouseButtons` becomes true for an instant not because
+of dragging but as a side effect of the tap itself, and the guard was
+suppressing a third of the real gestures.
 
-Несколько мест, где очевидное решение не работает.
+## How it works
 
-**Открытого пути к касаниям трекпада в macOS нет.** `NSEvent` отдаёт уже
-истолкованные жесты, а число пальцев при постукивании не сообщает вовсе.
-Поэтому берётся частный механизм `MultitouchSupport` — подключается через
-среду выполнения, символы проверяются при запуске. Особых разрешений он
-не требует.
+A few places where the obvious solution does not.
 
-Оговорка обычная для частных механизмов: раскладка данных не описана Apple
-и может измениться в новой версии системы. Тогда жесты перестанут
-распознаваться, но падать приложение не будет.
+**macOS offers no public path to trackpad touches.** `NSEvent` hands over
+already-interpreted gestures and does not report the finger count of a tap at
+all. So the private `MultitouchSupport` framework is used, bound through the
+runtime, with its symbols checked at startup. It needs no special permission.
 
-**Разбор идёт в потоке трекпада, и обращаться оттуда к настройкам нельзя.**
-Приложение падало при любом постукивании двумя и более пальцами, потому что
-разбор спрашивал настройки через `MainActor.assumeIsolated`. Это утверждение,
-что мы уже на главном потоке, а не переход на него: утверждение оказывалось
-ложным, и среда выполнения обрывала процесс. Теперь распознаватель получает
-готовые наборы — занятых жестов и состояния защит, — а не способ их спросить;
-обновляются они с главного потока и читаются под замком.
+The usual caveat for private frameworks applies: the data layout is not
+documented by Apple and may change in a future release. Gesture recognition
+would then stop, but the app will not crash.
 
-**Порядок разбора важен.** Движение проверяется раньше постукивания, иначе
-смахивание засчитывалось бы как тап. Сведение раньше поворота, поворот
-раньше удержания.
+**Recognition runs on the trackpad thread, and settings must not be touched from
+there.** The app used to crash on any tap of two or more fingers, because
+recognition asked the settings through `MainActor.assumeIsolated`. That is an
+assertion that we are already on the main actor, not a hop onto it: the
+assertion turned out false and the runtime tore the process down. The recogniser
+now receives ready values — the set of bound gestures and the state of the
+guards — rather than a way to ask for them; they are updated from the main
+thread and read under a lock.
 
-**Начальные величины снимаются не в первом кадре**, а через 0.03 с: в самом
-начале касания координаты скачут, и разброс пальцев выходит ложным.
+**The order of analysis matters.** Motion is checked before tapping, otherwise a
+swipe would count as a tap. Pinch before rotation, rotation before hold.
 
-**Сдвиг считается от начала**, а не между кадрами: дрожание пальца
-накапливалось бы и глушило распознавание.
+**Initial values are taken not on the first frame** but 0.03 s in: at the very
+start of a touch the coordinates jump about and the finger spread comes out
+false.
 
-**Двойное постукивание требует придержать одиночное** — иначе первый тап
-сработает раньше, чем придёт второй. Задержка включается, только если двойное
-кому-то назначено; иначе одиночное срабатывает мгновенно.
+**Drift is measured from the start**, not between frames: a finger's tremor
+would accumulate and drown recognition.
 
-**Модификаторы нажимаются по-настоящему.** Одного флага на клавише мало:
-для ⌘W разницы нет, но переключатель приложений ждёт именно отпускания
-Command, иначе остаётся висеть на экране.
+**A double tap requires holding back the single one** — otherwise the first tap
+fires before the second arrives. The delay is only applied when the double is
+bound to something; otherwise the single fires at once.
 
-**Мультимедийные клавиши идут особым событием** — с подтипом 8 и упакованными
-в поле данных кодом и состоянием. Обычные нажатия система для громкости
-и яркости не принимает.
+**Modifiers are pressed for real.** A flag on the key alone is not enough: it
+makes no difference for ⌘W, but the app switcher waits precisely for Command to
+be released, or it stays on screen instead of completing the switch.
 
-**Переход к предыдущему приложению сделан не через ⌘⇥.** Приложение само
-помнит, что было впереди до нынешнего, и активирует его напрямую — без
-полосы значков и без задержки. Себя в эту историю не пишет.
+**Media keys travel as a special event** — subtype 8, with the key code and
+state packed into the data field. The system does not accept ordinary key
+presses for volume and brightness.
 
-## Сборка
+**Switching to the previous application does not use ⌘⇥.** The app remembers
+what was frontmost before the current one and activates it directly — no row of
+icons, no delay. It does not record itself in that history.
+
+## Building
 
 ```bash
 ./build.sh --install
 ```
 
-Сборка идёт во временной папке вне синхронизации с облаком: файловый
-провайдер вешает на файлы атрибуты, которых `codesign` не принимает.
+The bundle is staged in a temporary folder outside iCloud sync: the file
+provider stamps files with attributes that `codesign` rejects.
 
-Подпись важна не для безопасности — macOS привязывает к ней автозапуск
-и выданные права.
+The signature matters not for security but because macOS ties the login item and
+granted permissions to it.
 
-## Разрешения
+## Permissions
 
-**Ничего не требуется**, пока назначены только быстрые команды, открытие
-приложений и переход к предыдущему.
+**Nothing is required** as long as only shortcuts, opening applications and
+switching to the previous app are bound.
 
-**Универсальный доступ** нужен для сочетаний клавиш и системных действий,
-которые через них выполняются: синтетические нажатия система пропускает
-только доверенным приложениям. Без него жест распознаётся, но нажатие
-никуда не уходит — молча, без ошибки.
+**Accessibility** is needed for key combinations and for the system actions that
+work through them: the system only lets trusted applications post synthetic key
+events. Without it a gesture is still recognised, but the key press goes
+nowhere — silently, with no error.
 
-Подсказка об этом появляется в настройках сама, но только когда сочетание
-клавиш кому-то назначено.
+A hint about this appears in settings on its own, but only once at least one key
+combination is bound.
 
-## Ограничения
+## Limits
 
-Жесты, занятые системой, перехватываются ненадёжно. Сила нажатия не
-различается: механизм отдаёт размер пятна касания, а он связан с давлением
-лишь косвенно.
+Gestures the system claims are intercepted unreliably. Pressure is not
+distinguished: the framework reports contact size, which is only indirectly
+related to force.
 
-Пороги — время, сдвиг, углы — подобраны рассуждением и правятся в
-`Sources/Multitouch.swift`.
+The thresholds — times, drifts, angles — were chosen by reasoning and can be
+adjusted in `Sources/Multitouch.swift`.

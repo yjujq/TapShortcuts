@@ -1,17 +1,17 @@
 import AppKit
 
-// MARK: - Раскладка сырых данных трекпада
+// MARK: - Raw trackpad data layout
 //
-// Открытого пути к касаниям трекпада в macOS нет: NSEvent отдаёт уже
-// истолкованные жесты, а число пальцев при постукивании — нет. Поэтому
-// берём частный механизм MultitouchSupport и подключаемся к нему через
-// среду выполнения. Разрешений он не требует — проверено.
+// macOS offers no public path to raw trackpad touches: NSEvent hands over
+// already-interpreted gestures and does not report the finger count of a tap.
+// So we take the private MultitouchSupport framework and bind to it through
+// the runtime. It needs no permissions — verified.
 
 private struct MTPoint { var x: Float = 0; var y: Float = 0 }
 private struct MTReadout { var pos = MTPoint(); var vel = MTPoint() }
 
-/// Одно касание. Раскладка полей подобрана под то, что отдаёт механизм;
-/// нам нужны только положение и размер пятна, остальное — заполнение.
+/// A single touch. The field layout matches what the framework hands back;
+/// we only need the position and the contact size, the rest is padding.
 private struct MTTouch {
     var frame: Int32 = 0
     var timestamp: Double = 0
@@ -25,17 +25,17 @@ private struct MTTouch {
     var unk2: Float = 0
 }
 
-// Структура касания не выражается в терминах Objective-C, поэтому в сигнатуре
-// обратного вызова берём сырой указатель и перетолковываем память на месте.
+// The touch struct is not representable in Objective-C, so the callback
+// signature takes a raw pointer and reinterprets the memory in place.
 private typealias FrameCallback = @convention(c) (UnsafeRawPointer?, UnsafeRawPointer?,
                                                   Int32, Double, Int32) -> Int32
 
-/// Что за жест распознан.
+/// Which gesture was recognised.
 ///
-/// Набор выведен из того, что достоверно извлекается из сырых данных
-/// трекпада: положение каждого пальца, его сдвиг, расстояние между пальцами
-/// и угол между ними. Жесты, которые система забирает себе, помечены —
-/// назначать их можно, но срабатывать они будут не всегда.
+/// The set is derived from what can be read reliably out of the raw trackpad
+/// data: each finger's position, its drift, the distance between fingers and
+/// the angle between them. Gestures the system claims for itself are marked —
+/// they can be bound, but they will not always fire.
 enum Gesture: String, CaseIterable, Identifiable {
     case tap2, tap3, tap4, tap5
     case doubleTap2, doubleTap3, doubleTap4
@@ -50,7 +50,7 @@ enum Gesture: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Раздел в настройках: плоский список из сорока пунктов нечитаем.
+    /// The section in settings: a flat list of forty rows is unreadable.
     var family: String {
         switch self {
         case .tap2, .tap3, .tap4, .tap5:                 return "Taps"
@@ -111,39 +111,39 @@ enum Gesture: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Занят ли жест системой. Такие можно назначать, но перехват выйдет
-    /// ненадёжным: часть событий macOS забирает себе раньше нас.
+    /// Whether the system claims this gesture. Such ones can be bound, but
+    /// interception is unreliable: macOS takes some events before we see them.
     var conflictsWithSystem: Bool {
         switch self {
-        case .tap2: return true                        // вторичный щелчок
-        case .pinchIn2, .pinchOut2: return true         // масштаб
-        case .pinchIn4, .pinchOut4: return true         // Launchpad и рабочий стол
-        case .rotateLeft, .rotateRight: return true     // поворот в просмотрщиках
+        case .tap2: return true                        // secondary click
+        case .pinchIn2, .pinchOut2: return true         // zoom
+        case .pinchIn4, .pinchOut4: return true         // Launchpad and Show Desktop
+        case .rotateLeft, .rotateRight: return true     // rotation in viewers
         case .swipeUp3, .swipeDown3, .swipeLeft3, .swipeRight3,
              .swipeUp4, .swipeDown4, .swipeLeft4, .swipeRight4:
-            return true                                 // рабочие столы и Mission Control
+            return true                                 // spaces and Mission Control
         default: return false
         }
     }
 }
 
-/// Слежение за трекпадом и распознавание жестов.
+/// Watching the trackpad and recognising gestures.
 ///
-/// Обратный вызов механизма — обычный указатель на функцию, замыкание с
-/// захватом туда не передать. Поэтому состояние держим в одиночке.
+/// The framework callback is a plain function pointer; a closure with
+/// captures cannot be passed there. So the state lives in a singleton.
 final class TouchWatcher {
     static let shared = TouchWatcher()
 
-    /// Вызывается, когда жест распознан.
+    /// Called when a gesture is recognised.
     var onGesture: ((Gesture) -> Void)?
-    /// Какие жесты заняты. Нужно для двойного постукивания: одиночное
-    /// приходится придерживать, чтобы дождаться второго, и делать это стоит
-    /// только когда двойное кому-то назначено.
+    /// Which gestures are bound. Needed for the double tap: the single one
+    /// has to be held back to wait for the second, and that is only worth
+    /// doing when the double is bound to something.
     ///
-    /// Именно набор, а не замыкание с обращением к настройкам. Разбор идёт
-    /// в потоке трекпада, и всякая попытка спросить оттуда главный поток
-    /// роняла приложение: MainActor.assumeIsolated — это утверждение, что мы
-    /// уже на главном потоке, а не переход на него.
+    /// A set, deliberately, rather than a closure that reads the settings.
+    /// Recognition runs on the trackpad thread, and every attempt to ask the
+    /// main thread from there crashed the app: MainActor.assumeIsolated is an
+    /// assertion that we are already on the main actor, not a hop onto it.
     private var bound: Set<String> = []
     private let boundLock = NSLock()
 
@@ -159,46 +159,48 @@ final class TouchWatcher {
         return bound.contains(gesture.rawValue)
     }
 
-    // Пороги. Подобраны рассуждением: сдвиг и расстояния даны в долях
-    // от размера трекпада, где 1.0 — вся его ширина или высота.
+    // Thresholds, chosen by reasoning. Drift and distances are given as
+    // fractions of the trackpad, where 1.0 is its full width or height.
     private let tapDuration: TimeInterval = 0.30
     private let holdDuration: TimeInterval = 0.60
     private let maxTapDrift: Float = 0.06
     private let minSwipe: Float = 0.15
     private let minPinch: Float = 0.10
-    private let minRotation: Float = 25          // градусов
+    private let minRotation: Float = 25          // degrees
     private let cornerZone: Float = 0.22
     private let doubleGap: TimeInterval = 0.35
     private let cooldown: TimeInterval = 0.35
 
-    // Защита от ложных срабатываний.
+    // Guards against accidental triggers.
     //
-    /// Пятно больше этого — ладонь или ребро руки, а не подушечка пальца.
-    /// Механизм отдаёт размер пятна, и у ладони он в разы больше.
+    /// A contact larger than this is a palm or the edge of a hand, not a
+    /// fingertip. The framework reports contact size, and a palm's is several
+    /// times bigger.
     private let maxTouchSize: Float = 1.6
-    /// Слишком слабое касание — призрак: палец завис над поверхностью.
+    /// Too faint a contact is a ghost: a finger hovering over the surface.
     private let minTouchSize: Float = 0.05
-    /// Пальцы настоящего постукивания опускаются почти разом. Если между
-    /// первым и последним прошло больше — это не жест, а рука легла.
+    /// The fingers of a real tap land almost together. If more time passed
+    /// between the first and the last, it is a hand settling, not a gesture.
     private let maxLandingSpread: TimeInterval = 0.12
-    /// Сколько молчать после набора текста: при печати руки задевают
-    /// трекпад постоянно, и почти всякое касание там ложное.
+    /// How long to stay silent after typing: while typing, hands brush the
+    /// trackpad constantly and almost every contact there is accidental.
     private let typingGuard: TimeInterval = 0.6
 
-    /// Насколько раньше опорный палец должен лечь, чтобы касание считалось
-    /// сделанным «при нём». Без этого порога обычное постукивание двумя
-    /// пальцами — системный вторичный щелчок — попадало бы в наши жесты.
-    /// Опорный палец должен лежать заметно раньше. 0.09 с были малы: при
-    /// обычной прокрутке пальцы опускаются с разницей в десятую долю
-    /// секунды, и первый ошибочно считался опорным.
+    /// How much earlier the anchor finger must land for a touch to count as
+    /// made "beside it". Without this threshold an ordinary two-finger tap —
+    /// the system secondary click — would fall into our gestures.
+    /// The anchor must be down noticeably earlier. 0.09 s was too small: in
+    /// ordinary scrolling the fingers land a tenth of a second apart, and the
+    /// first was wrongly taken for an anchor.
     ///
-    /// У жеста нет запасного пути: если evaluateLift() не признал опорный
-    /// палец, classify() его тоже не подхватит — там жест бракуется при
-    /// duration > tapDuration (0.3 с) от первого касания до последнего,
-    /// а опорный палец обычно лежит дольше. Поэтому завышенный порог не
-    /// смягчает срабатывание, а просто гасит жест целиком. 0.25 с требовали
-    /// неестественно долгой паузы между «положил» и «тюкнул» — снижено до
-    /// безопасного минимума над разбросом обычной прокрутки.
+    /// The gesture has no fallback: if evaluateLift() does not accept the
+    /// anchor, classify() will not pick it up either — there the gesture is
+    /// rejected once duration exceeds tapDuration (0.3 s) from the first
+    /// contact to the last, and an anchor finger usually rests longer. So an
+    /// inflated threshold does not soften the trigger, it silences the gesture
+    /// altogether. 0.25 s demanded an unnaturally long pause between putting
+    /// the finger down and tapping — lowered to a safe minimum above the
+    /// spread seen in ordinary scrolling.
     private let anchorLead: TimeInterval = 0.15
     private let minSideways: Float = 0.02
 
@@ -206,8 +208,8 @@ final class TouchWatcher {
     private var device: AnyObject?
     private var lastFired = Date.distantPast
 
-    /// Включены ли защиты от ложных срабатываний. Задаётся из настроек
-    /// и читается в потоке трекпада, поэтому под замком.
+    /// Whether the guards are on. Set from settings and read on the trackpad
+    /// thread, hence the lock.
     private var guardsOn = true
     private let guardsLock = NSLock()
 
@@ -220,7 +222,7 @@ final class TouchWatcher {
         return guardsOn
     }
 
-    /// Один палец на трекпаде, прослеженный по кадрам.
+    /// One finger on the trackpad, tracked across frames.
     private struct Contact {
         let began: Date
         let startX: Float, startY: Float
@@ -230,7 +232,7 @@ final class TouchWatcher {
 
     private var contacts: [Int32: Contact] = [:]
 
-    /// Обобщение всего касания — от первого пальца до снятия последнего.
+    /// A summary of the whole touch — from the first finger down to the last lifted.
     private struct Session {
         var began: Date
         var peakFingers = 0
@@ -240,24 +242,24 @@ final class TouchWatcher {
         var endSpread: Float = 0
         var startAngle: Float = .nan
         var endAngle: Float = .nan
-        var measured = false          // начальные величины сняты не сразу
-        /// Когда лёг первый и последний палец. По их расхождению видно,
-        /// постучали ли разом или рука опускалась вразнобой.
+        var measured = false          // initial values are not taken immediately
+        /// When the first and last finger landed. The gap between them shows
+        /// whether it was a tap made at once or a hand settling piecemeal.
         var firstLanding: Date
         var lastLanding: Date
-        var tipFired = false          // жест при опорном пальце уже выдан
+        var tipFired = false          // a tip-tap gesture was already emitted
     }
     private var session: Session?
 
-    // Для двойного постукивания.
+    // For the double tap.
     private var pendingTap: (gesture: Gesture, at: Date)?
     private var pendingWork: DispatchWorkItem?
 
     private init() {}
 
-    /// ВРЕМЕННО: печатает прямо в stderr, в обход unified log — там NSLog
-    /// от несистемных процессов прячет текст как <private>. Убрать вместе
-    /// со всеми вызовами после отладки.
+    /// TEMPORARY: prints straight to stderr, bypassing the unified log, where
+    /// NSLog from non-system processes hides the text as <private>. Remove
+    /// along with every call once debugging is done.
     private func tsDebug(_ format: String, _ args: CVarArg...) {
         let message = String(format: format, arguments: args)
         FileHandle.standardError.write((message + "\n").data(using: .utf8)!)
@@ -267,7 +269,7 @@ final class TouchWatcher {
         guard handle == nil else { return }
         let path = "/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport"
         guard let handle = dlopen(path, RTLD_LAZY) else {
-            tsDebug("TapShortcuts: механизм касаний не загрузился")
+            tsDebug("TapShortcuts: the multitouch framework failed to load")
             return
         }
         self.handle = handle
@@ -279,14 +281,14 @@ final class TouchWatcher {
         guard let listSym = dlsym(handle, "MTDeviceCreateList"),
               let regSym = dlsym(handle, "MTRegisterContactFrameCallback"),
               let startSym = dlsym(handle, "MTDeviceStart") else {
-            tsDebug("TapShortcuts: в механизме нет нужных символов")
+            tsDebug("TapShortcuts: the framework is missing the symbols we need")
             return
         }
 
         let createList = unsafeBitCast(listSym, to: CreateList.self)
         guard let list = createList()?.takeRetainedValue() as? [AnyObject],
               let device = list.first else {
-            tsDebug("TapShortcuts: устройство с многопальцевым вводом не найдено")
+            tsDebug("TapShortcuts: no multitouch device found")
             return
         }
         self.device = device
@@ -308,9 +310,9 @@ final class TouchWatcher {
         self.device = nil
     }
 
-    // MARK: - Разбор кадров
+    // MARK: - Frame handling
 
-    /// Кадры идут густо, поэтому здесь только накопление, без тяжёлой работы.
+    /// Frames arrive thick and fast, so this only accumulates state and does no heavy work.
     fileprivate func handle(raw: UnsafeRawPointer?, count: Int) {
         let now = Date()
         var present = Set<Int32>()
@@ -320,9 +322,9 @@ final class TouchWatcher {
             let touches = raw.assumingMemoryBound(to: MTTouch.self)
             for i in 0..<count {
                 let t = touches[i]
-                // Ладонь и призраки отсеиваются здесь, до всякого разбора:
-                // иначе лежащая на трекпаде рука считалась бы пальцами
-                // и превращала бы любое касание в многопальцевый жест.
+                // Palms and ghosts are filtered here, before any analysis:
+                // otherwise a hand resting on the trackpad would count as
+                // fingers and turn every touch into a multi-finger gesture.
                 guard t.size >= minTouchSize, t.size <= maxTouchSize else { continue }
                 let id = t.identifier
                 let x = t.normalized.pos.x, y = t.normalized.pos.y
@@ -331,8 +333,8 @@ final class TouchWatcher {
 
                 if var existing = contacts[id] {
                     existing.x = x; existing.y = y
-                    // Сдвиг считаем от начала, а не между кадрами: дрожание
-                    // пальца накапливалось бы и глушило распознавание.
+                    // Drift is measured from the start, not between frames:
+                    // a finger's tremor would accumulate and drown recognition.
                     existing.drift = max(existing.drift,
                                          abs(x - existing.startX) + abs(y - existing.startY))
                     contacts[id] = existing
@@ -364,8 +366,8 @@ final class TouchWatcher {
 
         let cx = points.map(\.0).reduce(0, +) / Float(points.count)
         let cy = points.map(\.1).reduce(0, +) / Float(points.count)
-        // Разброс — средняя удалённость пальцев от их общего средоточия.
-        // По его изменению отличаем сведение от разведения.
+        // Spread is the mean distance of the fingers from their centroid.
+        // Its change tells a pinch in from a pinch out.
         let spread = points
             .map { hypot($0.0 - cx, $0.1 - cy) }
             .reduce(0, +) / Float(points.count)
@@ -376,8 +378,9 @@ final class TouchWatcher {
             angle = atan2(dy, dx) * 180 / .pi
         }
 
-        // Начальные величины снимаем не в первом кадре, а когда пальцы уже
-        // легли: в самом начале координаты скачут, и разброс выходит ложным.
+        // Initial values are taken not on the first frame but once the
+        // fingers have settled: at the very start the coordinates jump about
+        // and the spread comes out false.
         if !s.measured, now.timeIntervalSince(s.began) >= 0.03 {
             s.startCentre = (cx, cy); s.startSpread = spread; s.startAngle = angle
             s.measured = true
@@ -385,23 +388,23 @@ final class TouchWatcher {
         s.endCentre = (cx, cy); s.endSpread = spread; s.endAngle = angle
     }
 
-    // MARK: - Разбор снятого пальца
+    // MARK: - Handling a lifted finger
 
-    /// Палец убран — не был ли это тап при опорных пальцах.
+    /// A finger was lifted — was this a tap beside an anchor finger?
     private func evaluateLift(of lifted: Contact, at now: Date) {
-        // ВРЕМЕННО: печатает, на каком именно условии жест «опорный палец +
-        // тап» отбраковывается. Смотреть через `log stream --predicate
-        // 'eventMessage contains "TS-DEBUG"' --style compact`. Убрать после
-        // отладки.
+        // TEMPORARY: prints which condition rejects the "anchor finger plus
+        // tap" gesture. Watch with `log stream --predicate
+        // 'eventMessage contains "TS-DEBUG"' --style compact`. Remove once
+        // debugging is done.
         let liftedDuration = now.timeIntervalSince(lifted.began)
 
-        // В касании было заметное движение — значит это прокрутка или
-        // смахивание. Снятие пальца там не тап, чем бы оно ни выглядело.
+        // The touch involved noticeable motion, so it is a scroll or a swipe.
+        // Lifting a finger there is not a tap, whatever it may look like.
         if let s = session {
             let travel = hypot(s.endCentre.0 - s.startCentre.0,
                                s.endCentre.1 - s.startCentre.1)
             if travel >= minSwipe / 2 {
-                tsDebug("TS-DEBUG: lift отброшен — travel=%.3f >= %.3f (жест похож на смахивание)",
+                tsDebug("TS-DEBUG: lift rejected — travel=%.3f >= %.3f (looks like a swipe)",
                       travel, minSwipe / 2)
                 return
             }
@@ -409,23 +412,23 @@ final class TouchWatcher {
 
         let duration = now.timeIntervalSince(lifted.began)
         guard duration <= tapDuration, lifted.drift <= maxTapDrift else {
-            tsDebug("TS-DEBUG: lift отброшен — не тап: duration=%.3f (лимит %.3f) drift=%.3f (лимит %.3f)",
+            tsDebug("TS-DEBUG: lift rejected — not a tap: duration=%.3f (limit %.3f) drift=%.3f (limit %.3f)",
                   duration, tapDuration, lifted.drift, maxTapDrift)
             return
         }
 
-        // Опорные — пальцы, легшие заметно раньше и всё ещё лежащие.
-        // Оба условия обязательны: без первого сюда попадал бы обычный тап
-        // двумя пальцами, без второго — разведение пальцев.
-        // Опорный обязан быть неподвижным. При прокрутке едут оба пальца,
-        // и без этой проверки едущий сходил за опорный.
+        // Anchors are fingers that landed noticeably earlier and are still
+        // down. Both conditions are required: without the first an ordinary
+        // two-finger tap would land here, without the second a spread would.
+        // The anchor must also be still. In scrolling both fingers travel, and
+        // without this check a travelling one passed for an anchor.
         let candidateAges = contacts.values.map { lifted.began.timeIntervalSince($0.began) }
         let anchors = contacts.values.filter {
             lifted.began.timeIntervalSince($0.began) >= anchorLead
                 && $0.drift <= maxTapDrift
         }
         guard anchors.count == 1 || anchors.count == 2 else {
-            tsDebug("TS-DEBUG: lift отброшен — опорных пальцев %d (нужно 1 или 2). Остальные пальцы лежали %@ с, порог anchorLead=%.3f",
+            tsDebug("TS-DEBUG: lift rejected — %d anchors (need 1 or 2). Other fingers were down %@ s, anchorLead threshold %.3f",
                   anchors.count, candidateAges.map { String(format: "%.3f", $0) }.description, anchorLead)
             return
         }
@@ -433,12 +436,12 @@ final class TouchWatcher {
         let anchorX = anchors.map(\.x).reduce(0, +) / Float(anchors.count)
         let sideways = lifted.startX - anchorX
         guard abs(sideways) >= minSideways else {
-            tsDebug("TS-DEBUG: lift отброшен — sideways=%.4f < %.4f (тап слишком близко к опорному)",
+            tsDebug("TS-DEBUG: lift rejected — sideways=%.4f < %.4f (tap too close to the anchor)",
                   sideways, minSideways)
             return
         }
 
-        tsDebug("TS-DEBUG: тап при опорном ПРИЗНАН — anchors=%d sideways=%.4f duration=%.3f",
+        tsDebug("TS-DEBUG: tip tap ACCEPTED — anchors=%d sideways=%.4f duration=%.3f",
               anchors.count, sideways, liftedDuration)
 
         session?.tipFired = true
@@ -450,11 +453,11 @@ final class TouchWatcher {
         }
     }
 
-    // MARK: - Разбор законченного касания
+    // MARK: - Handling a finished touch
 
     private func classify(_ s: Session, at now: Date) {
-        // Жест при опорном пальце уже выдан внутри касания — второй раз
-        // разбирать то же самое движение не нужно.
+        // A tip tap was already emitted during this touch — there is no need
+        // to analyse the same motion twice.
         guard !s.tipFired else { return }
 
         let fingers = s.peakFingers
@@ -464,9 +467,9 @@ final class TouchWatcher {
         let travel = hypot(dx, dy)
         let spreadChange = s.endSpread - s.startSpread
 
-        // Порядок разбора важен: движение перекрывает постукивание.
+        // The order matters: motion takes precedence over tapping.
         if fingers >= 3, travel >= minSwipe, abs(spreadChange) < minPinch {
-            // У трекпада начало отсчёта внизу слева, поэтому рост y — вверх.
+            // The trackpad's origin is bottom-left, so growing y means up.
             let name = abs(dx) > abs(dy)
                 ? (dx > 0 ? "swipeRight" : "swipeLeft")
                 : (dy > 0 ? "swipeUp" : "swipeDown")
@@ -482,8 +485,8 @@ final class TouchWatcher {
 
         if fingers == 2, !s.startAngle.isNaN, !s.endAngle.isNaN {
             var turn = s.endAngle - s.startAngle
-            // Приводим к промежутку от -180 до 180: иначе переход через ноль
-            // давал бы поворот на сотни градусов на ровном месте.
+            // Normalise to -180...180: otherwise crossing zero would report
+            // a rotation of hundreds of degrees out of nowhere.
             while turn > 180 { turn -= 360 }
             while turn < -180 { turn += 360 }
             if abs(turn) >= minRotation {
@@ -513,9 +516,9 @@ final class TouchWatcher {
             return
         }
 
-        // Пальцы настоящего постукивания опускаются почти разом. Рука,
-        // легшая на трекпад вразнобой, даёт то же число пальцев, но
-        // растянутое во времени — такое жестом не считаем.
+        // The fingers of a real tap land almost together. A hand settling on
+        // the trackpad piecemeal gives the same finger count but stretched in
+        // time — that does not count as a gesture.
         let landingSpread = s.lastLanding.timeIntervalSince(s.firstLanding)
         guard landingSpread <= maxLandingSpread else { return }
 
@@ -523,7 +526,7 @@ final class TouchWatcher {
               let single = Gesture(rawValue: "tap" + String(min(fingers, 5))) else { return }
         let double = Gesture(rawValue: "doubleTap" + String(min(fingers, 4)))
 
-        // Второе такое же постукивание подряд — это двойное.
+        // A second identical tap in a row makes it a double.
         if let pending = pendingTap, pending.gesture == single,
            now.timeIntervalSince(pending.at) <= doubleGap, let double {
             pendingWork?.cancel()
@@ -532,8 +535,8 @@ final class TouchWatcher {
             return
         }
 
-        // Одиночное придерживаем, только если двойное кому-то назначено:
-        // иначе задержка была бы заметна на ровном месте.
+        // Hold back the single one only if the double is bound to something:
+        // otherwise the delay would be noticeable for no reason.
         if let double, isBound(double) {
             pendingTap = (single, now)
             let work = DispatchWorkItem { [weak self] in
@@ -548,43 +551,43 @@ final class TouchWatcher {
     }
 
     private func fire(_ gesture: Gesture) {
-        // При наборе текста руки задевают трекпад постоянно, и почти всякое
-        // касание там ложное. Время с последнего нажатия спрашиваем у системы:
-        // это открытое средство и особых разрешений не требует, в отличие
-        // от слежения за клавиатурой.
+        // While typing, hands brush the trackpad constantly and almost every
+        // contact is accidental. We ask the system for the time since the last
+        // key press: that is a public facility and needs no special permission,
+        // unlike watching the keyboard.
         if guardsEnabled {
             let sinceKey = CGEventSource.secondsSinceLastEventType(
                 .combinedSessionState, eventType: .keyDown)
             if sinceKey < typingGuard {
-                tsDebug("TS-DEBUG: fire(%@) погашен — недавно печатали (%.3f с назад, порог %.3f)",
+                tsDebug("TS-DEBUG: fire(%@) suppressed — typed recently (%.3f s ago, threshold %.3f)",
                       String(describing: gesture), sinceKey, typingGuard)
                 return
             }
 
-            // Зажатая кнопка означает перетаскивание или выделение — там
-            // многопальцевые касания к жестам отношения не имеют.
+            // A held button means dragging or selecting — multi-finger
+            // contacts there have nothing to do with gestures.
             //
-            // «Опорный палец + тап рядом» сюда не подпадает: сам тап
-            // физически совпадает с системным tap-to-click, и ОС на то же
-            // касание параллельно генерирует свой клик — pressedMouseButtons
-            // на миг становится истинным не из-за перетаскивания, а как
-            // побочный эффект того же тапа. Подтверждено логами: жест
-            // распознавался верно, но гасился этой проверкой в трети
-            // случаев.
+            // "Anchor finger plus a tap beside it" is exempt: the tap itself
+            // physically coincides with the system's tap-to-click, and the OS
+            // generates its own click for the same contact — pressedMouseButtons
+            // becomes true for an instant not because of dragging but as a side
+            // effect of that very tap. Confirmed by the logs: the gesture was
+            // recognised correctly but suppressed by this check a third of the
+            // time.
             let isTip: Bool
             switch gesture {
             case .tipLeft, .tipRight, .tipLeft2, .tipRight2: isTip = true
             default: isTip = false
             }
             if !isTip, NSEvent.pressedMouseButtons != 0 {
-                tsDebug("TS-DEBUG: fire(%@) погашен — зажата кнопка мыши/трекпада", String(describing: gesture))
+                tsDebug("TS-DEBUG: fire(%@) suppressed — a mouse/trackpad button is held", String(describing: gesture))
                 return
             }
         }
 
         let now = Date()
         guard now.timeIntervalSince(lastFired) > cooldown else {
-            tsDebug("TS-DEBUG: fire(%@) погашен — cooldown (%.3f с с прошлого срабатывания, порог %.3f)",
+            tsDebug("TS-DEBUG: fire(%@) suppressed — cooldown (%.3f s since the last trigger, threshold %.3f)",
                   String(describing: gesture), now.timeIntervalSince(lastFired), cooldown)
             return
         }

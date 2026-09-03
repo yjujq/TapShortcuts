@@ -10,8 +10,8 @@ struct SettingsView: View {
     @State private var loading = true
     @State private var accessibilityGranted = true
 
-    /// Имя приложения по опознавателю. Удалённое из системы покажем
-    /// самим опознавателем, чтобы его было видно и можно было убрать.
+    /// Application name from its bundle identifier. One removed from the
+    /// system is shown by its identifier, so it stays visible and removable.
     private func appName(_ bundleID: String) -> String {
         apps.first { $0.bundleID == bundleID }?.name ?? bundleID
     }
@@ -20,12 +20,12 @@ struct SettingsView: View {
         !(store.bindings[gesture.rawValue] ?? "").isEmpty
     }
 
-    /// Занятые жесты в порядке объявления.
+    /// Bound gestures, in declaration order.
     private var assigned: [Gesture] {
         Gesture.allCases.filter(isAssigned)
     }
 
-    /// Разделы в том порядке, в каком объявлены жесты.
+    /// Families in the order the gestures are declared.
     private var families: [String] {
         var seen: [String] = []
         for g in Gesture.allCases where !isAssigned(g) && !seen.contains(g.family) {
@@ -89,9 +89,9 @@ struct SettingsView: View {
                         HStack { ProgressView().controlSize(.small); Text("Loading shortcuts…") }
                     }
                 } else {
-                    // Занятые жесты выносим наверх: их единицы, а список
-                    // целиком длинный, и каждый раз искать в нём назначенное
-                    // было бы утомительно.
+                    // Bound gestures go to the top: there are only a few of
+                    // them, the whole list is long, and hunting for the bound
+                    // ones every time would be tedious.
                     if !assigned.isEmpty {
                         Section("Assigned") {
                             ForEach(assigned) { gesture in
@@ -102,7 +102,7 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Ниже — только свободные, чтобы занятые не двоились.
+                    // Below, only the free ones, so bound ones do not appear twice.
                     ForEach(families, id: \.self) { family in
                         let free = Gesture.allCases.filter {
                             $0.family == family && !isAssigned($0)
@@ -122,8 +122,8 @@ struct SettingsView: View {
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
 
-            // Доступ нужен только сочетаниям клавиш, поэтому и подсказка
-            // появляется лишь когда хотя бы одно из них назначено.
+            // Access is only needed for key combinations, so the hint appears
+            // only once at least one of them is bound.
             if store.needsAccessibility, !accessibilityGranted {
                 Divider()
                 HStack(spacing: 6) {
@@ -164,8 +164,8 @@ struct SettingsView: View {
         )
     }
 
-    /// Список читается в фоне: обращение к программе `shortcuts` занимает
-    /// заметное время, и на главном потоке окно бы подвисало при открытии.
+    /// The list is read in the background: calling the `shortcuts` tool takes
+    /// noticeable time, and on the main thread the window would stall on open.
     private func load() {
         loading = true
         DispatchQueue.global(qos: .userInitiated).async {
@@ -181,9 +181,9 @@ struct SettingsView: View {
     }
 }
 
-/// Отдельное окно настроек. Нужно на случай, когда значок в строке меню
-/// скрыт: тогда всплывающему окну не от чего оттолкнуться, и настройки
-/// открываются обычным окном по повторному запуску из Finder.
+/// A standalone settings window. Needed when the menu bar icon is hidden:
+/// a popover then has nothing to anchor to, so settings open in an ordinary
+/// window when the app is relaunched from Finder.
 @MainActor
 enum SettingsWindow {
     private static var window: NSWindow?

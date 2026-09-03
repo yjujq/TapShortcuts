@@ -1,26 +1,25 @@
 import AppKit
 
-/// Готовые действия над системой.
+/// Ready-made actions on the system.
 ///
-/// Набор отобран по перечню похожих программ, но оставлено только то, что
-/// выполнимо открытыми средствами: нажатия клавиш, мультимедийные клавиши,
-/// команды системных программ и AppleScript. Всё, что требует частных
-/// механизмов — вроде «не беспокоить» — сюда не вошло: такое надёжнее
-/// сделать быстрой командой.
+/// The set was chosen from what comparable tools offer, keeping only what is
+/// achievable with public means: key presses, media keys, system command-line
+/// tools and AppleScript. Anything needing private frameworks — Do Not Disturb,
+/// for one — was left out: such things are more reliable as a Shortcut.
 enum SystemAction: String, CaseIterable, Identifiable {
-    // Рабочие столы и обзор
+    // Spaces and overview
     case missionControl, appExpose, launchpad, showDesktop
     case spaceLeft, spaceRight
-    // Питание и защита
+    // Power and security
     case lockScreen, sleepDisplay
-    // Мультимедиа
+    // Media
     case playPause, nextTrack, previousTrack
     case volumeUp, volumeDown, mute
-    // Экран и подсветка
+    // Display and backlight
     case brightnessUp, brightnessDown
-    // Снимки экрана
+    // Screenshots
     case screenshotScreen, screenshotArea
-    // Прочее
+    // Other
     case toggleDarkMode
 
     var id: String { rawValue }
@@ -51,7 +50,7 @@ enum SystemAction: String, CaseIterable, Identifiable {
 
     func run() {
         switch self {
-        // Обзор окон и рабочие столы — обычные сочетания клавиш.
+        // Window overview and spaces are plain key combinations.
         case .missionControl: KeyCombo.send("ctrl+up")
         case .appExpose:      KeyCombo.send("ctrl+down")
         case .showDesktop:    KeyCombo.send("f11")
@@ -63,11 +62,11 @@ enum SystemAction: String, CaseIterable, Identifiable {
 
         case .launchpad:   open(app: "/System/Applications/Launchpad.app")
 
-        // Гашение экрана делает системная программа: своего пути к этому нет.
+        // Sleeping the display is done by a system tool: there is no own way to it.
         case .sleepDisplay: shell("/usr/bin/pmset", ["displaysleepnow"])
 
-        // Мультимедийные клавиши идут не как обычные нажатия, а особым
-        // событием — обычная клавиатура их так и посылает.
+        // Media keys travel not as ordinary key presses but as a special
+        // event — that is how a real keyboard sends them.
         case .playPause:     media(16)
         case .nextTrack:     media(17)
         case .previousTrack: media(18)
@@ -87,7 +86,7 @@ enum SystemAction: String, CaseIterable, Identifiable {
         }
     }
 
-    // MARK: - Способы выполнения
+    // MARK: - Ways of running things
 
     private func open(app path: String) {
         NSWorkspace.shared.open(URL(fileURLWithPath: path))
@@ -102,8 +101,8 @@ enum SystemAction: String, CaseIterable, Identifiable {
         try? task.run()
     }
 
-    /// AppleScript выполняем отдельной программой, а не через NSAppleScript:
-    /// так вызов не подвешивает наш поток, если сценарий задумается.
+    /// AppleScript runs through a separate tool rather than NSAppleScript:
+    /// that way a script that stalls does not block our thread.
     private func script(_ source: String) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
@@ -113,9 +112,8 @@ enum SystemAction: String, CaseIterable, Identifiable {
         try? task.run()
     }
 
-    /// Мультимедийная клавиша. Такие события система принимает только
-    /// в особом виде, с подтипом 8 и упакованными в поле данных
-    /// кодом клавиши и состоянием.
+    /// A media key. The system accepts such events only in a special shape,
+    /// with subtype 8 and the key code and state packed into the data field.
     private func media(_ key: Int32) {
         for down in [true, false] {
             let flags: NSEvent.ModifierFlags = down ? NSEvent.ModifierFlags(rawValue: 0xA00)

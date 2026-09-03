@@ -1,13 +1,13 @@
 import AppKit
 
-/// Список установленных приложений — для действия «открыть приложение».
+/// The list of installed applications, for the "open application" action.
 enum Apps {
-    /// Читается при открытии настроек: обход папок недешёвый, а состав
-    /// меняется редко.
+    /// Read when settings open: walking the folders is not cheap and the
+    /// set of applications rarely changes.
     static func list() -> [(name: String, bundleID: String)] {
         let folders = ["/Applications", "/System/Applications",
                        NSHomeDirectory() + "/Applications"]
-        var found: [String: String] = [:]      // имя -> опознаватель
+        var found: [String: String] = [:]      // name -> bundle identifier
 
         for folder in folders {
             let url = URL(fileURLWithPath: folder)
@@ -19,7 +19,7 @@ enum Apps {
                 let name = item.deletingPathExtension().lastPathComponent
                 found[name] = id
             }
-            // Служебные программы лежат отдельной вложенной папкой.
+            // Utilities live in their own nested folder.
             let utilities = url.appendingPathComponent("Utilities")
             if let items = try? FileManager.default.contentsOfDirectory(
                 at: utilities, includingPropertiesForKeys: nil) {
@@ -36,7 +36,7 @@ enum Apps {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    /// Открыть или вывести вперёд, если уже запущено.
+    /// Open it, or bring it to the front if it is already running.
     static func activate(bundleID: String) {
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
         if let app = running.first {
@@ -45,7 +45,7 @@ enum Apps {
             return
         }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-            NSLog("TapShortcuts: приложение \(bundleID) не найдено")
+            NSLog("TapShortcuts: application \(bundleID) not found")
             return
         }
         NSWorkspace.shared.openApplication(at: url, configuration: .init())
