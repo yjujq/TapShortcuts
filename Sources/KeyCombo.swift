@@ -117,7 +117,14 @@ enum Action {
         case .none: break
         case .keys(let combo): KeyCombo.send(combo)
         case .shortcut(let name): Shortcuts.run(name)
-        case .previousApp: MainActor.assumeIsolated { AppSwitcher.shared.switchToPrevious() }
+        case .previousApp:
+            // Явный переход на главный поток, а не утверждение о нём.
+            // Сегодня сюда попадают только с главного, но утверждение
+            // молча превратилось бы в падение, начни кто-то звать иначе —
+            // именно так приложение и падало на разборе жестов.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { AppSwitcher.shared.switchToPrevious() }
+            }
         case .system(let a): a.run()
         case .app(let id): Apps.activate(bundleID: id)
         case .shell(let command): runTool("/bin/sh", ["-c", command])

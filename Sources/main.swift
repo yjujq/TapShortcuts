@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private var iconWatch: AnyCancellable?
+    private var bindingsWatch: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyIconVisibility()
@@ -24,12 +25,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.handle(gesture) }
         }
         // Двойное постукивание требует придержать одиночное — сообщаем
-        // распознавателю, назначено ли оно, чтобы не задерживать зря.
-        TouchWatcher.shared.isBound = { [weak self] gesture in
-            MainActor.assumeIsolated {
-                guard let self else { return false }
-                if case .none = self.store.action(for: gesture) { return false }
-                return true
+        // распознавателю, какие жесты заняты, чтобы не задерживать зря.
+        // Передаём готовый набор, а не способ спросить: разбор идёт в потоке
+        // трекпада, и обращаться оттуда к настройкам нельзя.
+        updateBoundGestures()
+        bindingsWatch = store.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.updateBoundGestures() }
             }
         }
         TouchWatcher.shared.start()
@@ -45,6 +47,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         togglePopover()
         return true
+    }
+
+    private func updateBoundGestures() {
+        let taken = store.bindings
+            .filter { !$0.value.isEmpty }
+            .keys
+        TouchWatcher.shared.setBound(Set(taken))
     }
 
     private func handle(_ gesture: Gesture) {

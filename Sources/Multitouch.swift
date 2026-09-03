@@ -136,10 +136,28 @@ final class TouchWatcher {
 
     /// Вызывается, когда жест распознан.
     var onGesture: ((Gesture) -> Void)?
-    /// Назначено ли на жест действие. Нужно для двойного постукивания:
-    /// одиночное приходится придерживать, чтобы дождаться второго, и делать
-    /// это стоит только когда двойное кому-то нужно.
-    var isBound: ((Gesture) -> Bool)?
+    /// Какие жесты заняты. Нужно для двойного постукивания: одиночное
+    /// приходится придерживать, чтобы дождаться второго, и делать это стоит
+    /// только когда двойное кому-то назначено.
+    ///
+    /// Именно набор, а не замыкание с обращением к настройкам. Разбор идёт
+    /// в потоке трекпада, и всякая попытка спросить оттуда главный поток
+    /// роняла приложение: MainActor.assumeIsolated — это утверждение, что мы
+    /// уже на главном потоке, а не переход на него.
+    private var bound: Set<String> = []
+    private let boundLock = NSLock()
+
+    func setBound(_ gestures: Set<String>) {
+        boundLock.lock()
+        bound = gestures
+        boundLock.unlock()
+    }
+
+    private func isBound(_ gesture: Gesture) -> Bool {
+        boundLock.lock()
+        defer { boundLock.unlock() }
+        return bound.contains(gesture.rawValue)
+    }
 
     // Пороги. Подобраны рассуждением: сдвиг и расстояния даны в долях
     // от размера трекпада, где 1.0 — вся его ширина или высота.
@@ -415,7 +433,7 @@ final class TouchWatcher {
 
         // Одиночное придерживаем, только если двойное кому-то назначено:
         // иначе задержка была бы заметна на ровном месте.
-        if let double, isBound?(double) == true {
+        if let double, isBound(double) {
             pendingTap = (single, now)
             let work = DispatchWorkItem { [weak self] in
                 self?.pendingTap = nil
