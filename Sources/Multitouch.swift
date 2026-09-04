@@ -257,19 +257,11 @@ final class TouchWatcher {
 
     private init() {}
 
-    /// TEMPORARY: prints straight to stderr, bypassing the unified log, where
-    /// NSLog from non-system processes hides the text as <private>. Remove
-    /// along with every call once debugging is done.
-    private func tsDebug(_ format: String, _ args: CVarArg...) {
-        let message = String(format: format, arguments: args)
-        FileHandle.standardError.write((message + "\n").data(using: .utf8)!)
-    }
-
     func start() {
         guard handle == nil else { return }
         let path = "/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport"
         guard let handle = dlopen(path, RTLD_LAZY) else {
-            tsDebug("TapShortcuts: the multitouch framework failed to load")
+            NSLog("TapShortcuts: the multitouch framework failed to load")
             return
         }
         self.handle = handle
@@ -281,14 +273,14 @@ final class TouchWatcher {
         guard let listSym = dlsym(handle, "MTDeviceCreateList"),
               let regSym = dlsym(handle, "MTRegisterContactFrameCallback"),
               let startSym = dlsym(handle, "MTDeviceStart") else {
-            tsDebug("TapShortcuts: the framework is missing the symbols we need")
+            NSLog("TapShortcuts: the framework is missing the symbols we need")
             return
         }
 
         let createList = unsafeBitCast(listSym, to: CreateList.self)
         guard let list = createList()?.takeRetainedValue() as? [AnyObject],
               let device = list.first else {
-            tsDebug("TapShortcuts: no multitouch device found")
+            NSLog("TapShortcuts: no multitouch device found")
             return
         }
         self.device = device
@@ -392,28 +384,18 @@ final class TouchWatcher {
 
     /// A finger was lifted — was this a tap beside an anchor finger?
     private func evaluateLift(of lifted: Contact, at now: Date) {
-        // TEMPORARY: prints which condition rejects the "anchor finger plus
-        // tap" gesture. Watch with `log stream --predicate
-        // 'eventMessage contains "TS-DEBUG"' --style compact`. Remove once
-        // debugging is done.
-        let liftedDuration = now.timeIntervalSince(lifted.began)
-
         // The touch involved noticeable motion, so it is a scroll or a swipe.
         // Lifting a finger there is not a tap, whatever it may look like.
         if let s = session {
             let travel = hypot(s.endCentre.0 - s.startCentre.0,
                                s.endCentre.1 - s.startCentre.1)
             if travel >= minSwipe / 2 {
-                tsDebug("TS-DEBUG: lift rejected — travel=%.3f >= %.3f (looks like a swipe)",
-                      travel, minSwipe / 2)
                 return
             }
         }
 
         let duration = now.timeIntervalSince(lifted.began)
         guard duration <= tapDuration, lifted.drift <= maxTapDrift else {
-            tsDebug("TS-DEBUG: lift rejected — not a tap: duration=%.3f (limit %.3f) drift=%.3f (limit %.3f)",
-                  duration, tapDuration, lifted.drift, maxTapDrift)
             return
         }
 
@@ -422,27 +404,19 @@ final class TouchWatcher {
         // two-finger tap would land here, without the second a spread would.
         // The anchor must also be still. In scrolling both fingers travel, and
         // without this check a travelling one passed for an anchor.
-        let candidateAges = contacts.values.map { lifted.began.timeIntervalSince($0.began) }
         let anchors = contacts.values.filter {
             lifted.began.timeIntervalSince($0.began) >= anchorLead
                 && $0.drift <= maxTapDrift
         }
         guard anchors.count == 1 || anchors.count == 2 else {
-            tsDebug("TS-DEBUG: lift rejected — %d anchors (need 1 or 2). Other fingers were down %@ s, anchorLead threshold %.3f",
-                  anchors.count, candidateAges.map { String(format: "%.3f", $0) }.description, anchorLead)
             return
         }
 
         let anchorX = anchors.map(\.x).reduce(0, +) / Float(anchors.count)
         let sideways = lifted.startX - anchorX
         guard abs(sideways) >= minSideways else {
-            tsDebug("TS-DEBUG: lift rejected — sideways=%.4f < %.4f (tap too close to the anchor)",
-                  sideways, minSideways)
             return
         }
-
-        tsDebug("TS-DEBUG: tip tap ACCEPTED — anchors=%d sideways=%.4f duration=%.3f",
-              anchors.count, sideways, liftedDuration)
 
         session?.tipFired = true
         switch (anchors.count, sideways < 0) {
@@ -559,8 +533,6 @@ final class TouchWatcher {
             let sinceKey = CGEventSource.secondsSinceLastEventType(
                 .combinedSessionState, eventType: .keyDown)
             if sinceKey < typingGuard {
-                tsDebug("TS-DEBUG: fire(%@) suppressed — typed recently (%.3f s ago, threshold %.3f)",
-                      String(describing: gesture), sinceKey, typingGuard)
                 return
             }
 
@@ -580,15 +552,12 @@ final class TouchWatcher {
             default: isTip = false
             }
             if !isTip, NSEvent.pressedMouseButtons != 0 {
-                tsDebug("TS-DEBUG: fire(%@) suppressed — a mouse/trackpad button is held", String(describing: gesture))
                 return
             }
         }
 
         let now = Date()
         guard now.timeIntervalSince(lastFired) > cooldown else {
-            tsDebug("TS-DEBUG: fire(%@) suppressed — cooldown (%.3f s since the last trigger, threshold %.3f)",
-                  String(describing: gesture), now.timeIntervalSince(lastFired), cooldown)
             return
         }
         lastFired = now
