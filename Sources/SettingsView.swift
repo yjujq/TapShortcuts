@@ -187,18 +187,49 @@ struct SettingsView: View {
 @MainActor
 enum SettingsWindow {
     private static var window: NSWindow?
+    private static var escapeMonitor: Any?
 
     static func show() {
         if window == nil {
-            let hosting = NSHostingController(rootView: SettingsView(store: .shared))
-            let w = NSWindow(contentViewController: hosting)
-            w.title = "TapShortcuts"
-            w.styleMask = [.titled, .closable, .miniaturizable]
+            // Borderless, so the window carries the same chrome as the panel
+            // under the icon. A title bar would put a system-drawn strip above
+            // our rounded corners and break the shape.
+            let hosting = NSHostingView(
+                rootView: AnyView(SettingsView(store: .shared).panelChrome())
+            )
+            hosting.frame = NSRect(origin: .zero, size: hosting.fittingSize)
+
+            let w = NSWindow(
+                contentRect: hosting.frame,
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            w.contentView = hosting
+            w.isOpaque = false
+            w.backgroundColor = .clear
+            w.hasShadow = true
             w.isReleasedWhenClosed = false
+            // Without a title bar there is nothing to drag, so the background
+            // itself moves the window, and Escape stands in for the close box.
+            w.isMovableByWindowBackground = true
             w.center()
             window = w
+
+            escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
+                guard event.keyCode == 53 else { return event }   // 53 = Escape
+                MainActor.assumeIsolated { close() }
+                return nil
+            }
         }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    static func close() {
+        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
+        escapeMonitor = nil
+        window?.orderOut(nil)
+        window = nil
     }
 }

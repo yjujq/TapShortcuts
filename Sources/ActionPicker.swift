@@ -136,6 +136,8 @@ private struct ActionChooser: View {
             .listStyle(.inset)
         }
         .frame(width: 320, height: 380)
+        .panelChrome()
+        .clearPopoverBackground()
         .onAppear { focused = true }
     }
 

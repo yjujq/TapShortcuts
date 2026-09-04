@@ -8,7 +8,7 @@ import Combine
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = Store.shared
     private var statusItem: NSStatusItem!
-    private let popover = NSPopover()
+    private let settingsPanel = FloatingPanel()
     private var iconWatch: AnyCancellable?
     private var bindingsWatch: AnyCancellable?
 
@@ -87,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if store.showStatusIcon {
             if statusItem == nil { setUpStatusItem() }
         } else if let item = statusItem {
-            if popover.isShown { popover.performClose(nil) }
+            settingsPanel.hide()
             NSStatusBar.system.removeStatusItem(item)
             statusItem = nil
         }
@@ -100,9 +100,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePopover)
 
-        popover.contentViewController = NSHostingController(rootView: SettingsView(store: .shared))
-        popover.behavior = .transient
-        popover.contentSize = NSSize(width: 400, height: 520)
     }
 
     @objc private func togglePopover() {
@@ -112,11 +109,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             SettingsWindow.show()
             return
         }
-        if popover.isShown {
-            popover.performClose(nil)
+        if settingsPanel.isShown {
+            settingsPanel.hide()
         } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
+            // takesFocus: settings hold text fields and pickers, which take no
+            // input at all in a panel that never becomes key.
+            settingsPanel.show(SettingsView(store: .shared).panelChrome(),
+                               below: button, takesFocus: true)
         }
     }
 }
