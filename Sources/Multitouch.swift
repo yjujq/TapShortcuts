@@ -204,6 +204,12 @@ final class TouchWatcher {
     private let anchorLead: TimeInterval = 0.15
     private let minSideways: Float = 0.02
 
+    /// The tap has to land beside the anchor, not merely somewhere else on the
+    /// pad. Coordinates are normalised across the trackpad, so on a 16 x 10 cm
+    /// one 0.28 is about 4.5 cm sideways and 0.22 about 2.2 cm up or down.
+    private let maxSideways: Float = 0.28
+    private let maxVertical: Float = 0.22
+
     private var handle: UnsafeMutableRawPointer?
     private var device: AnyObject?
     private var lastFired = Date.distantPast
@@ -413,8 +419,22 @@ final class TouchWatcher {
         }
 
         let anchorX = anchors.map(\.x).reduce(0, +) / Float(anchors.count)
+        let anchorY = anchors.map(\.y).reduce(0, +) / Float(anchors.count)
         let sideways = lifted.startX - anchorX
-        guard abs(sideways) >= minSideways else {
+        let vertical = abs(lifted.startY - anchorY)
+        // Far enough to tell which side it fell on, and close enough to be
+        // beside the anchor rather than anywhere on the pad. The upper bounds
+        // were missing, and with only a lower one the gesture meant "tap
+        // anywhere while another finger rests anywhere" — which is an ordinary
+        // click with a thumb on the pad. Every condition above it was already
+        // satisfied by such a click.
+        //
+        // The vertical bound does most of the work: a resting thumb sits near
+        // the near edge while the clicking finger is up in the middle, whereas
+        // two fingers side by side are at much the same height.
+        guard abs(sideways) >= minSideways,
+              abs(sideways) <= maxSideways,
+              vertical <= maxVertical else {
             return
         }
 

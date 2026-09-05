@@ -32,13 +32,24 @@ are marked with a warning symbol.
 A gesture of two contacts: one finger rests while another taps next to it. The
 side is decided by comparing against the anchor finger's position.
 
-It is separated from the system's secondary click, and from ordinary scrolling,
-by three required conditions:
+It is separated from the system's secondary click, from ordinary scrolling and
+from an ordinary click, by four required conditions:
 
-- the anchor landed **at least 0.09 s** before the tap;
+- the anchor landed **at least 0.15 s** before the tap;
 - the anchor is **still** — in scrolling both fingers travel, and without this
   check a travelling one passed for an anchor;
-- there was **no noticeable motion** in the touch at all.
+- there was **no noticeable motion** in the touch at all;
+- the tap landed **beside the anchor** — far enough sideways to tell which side
+  it fell on, and close enough in both axes to be next to it.
+
+The last one was missing at first, and only a lower bound on the sideways
+distance was checked. That made the gesture mean "tap anywhere, while another
+finger rests anywhere" — which is precisely an ordinary click with a thumb on
+the pad, and every other condition was already satisfied by one. Clicking sent
+the frontmost application away roughly every second time. The vertical bound
+does most of the separating: a resting thumb sits near the near edge while the
+clicking finger is up in the middle, whereas two fingers side by side are at
+much the same height.
 
 The first threshold was raised to 0.25 s at one point and turned out to silence
 the gesture entirely: the anchor usually rests longer than `tapDuration`, so an
