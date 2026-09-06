@@ -73,6 +73,11 @@ of a name, and the list narrows as you type.
 
 Bound gestures are lifted into a section at the top while free ones stay in
 their families, so there is no hunting for the bound ones among four dozen rows.
+A filter above the list — all, bound, free — drops either half outright.
+
+Settings themselves are a path rather than one scroll: the root lists General,
+Excluded apps and Gestures, and the header prints where you are. Searching from
+the root covers every page at once, including which gesture runs what.
 
 ### Shell commands and scripts
 

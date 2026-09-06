@@ -50,34 +50,57 @@ struct ActionPicker: View {
     let entries: [ActionEntry]
 
     @State private var choosing = false
+    @State private var hovered = false
 
     var body: some View {
-        HStack {
+        HStack(spacing: 10) {
             if gesture.conflictsWithSystem {
                 // Mark the ones the system claims: they can be bound, but
                 // they will not always fire.
-                Label(gesture.title, systemImage: "exclamationmark.triangle")
-            } else {
-                Text(gesture.title)
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Chrome.faint)
+                    .help("The system claims this gesture; it will not always fire.")
             }
+            Text(gesture.title)
+                .font(.system(size: 13))
+                .foregroundStyle(Chrome.text)
+                .lineLimit(1)
+
             Spacer(minLength: 8)
-            Button {
-                choosing = true
-            } label: {
-                HStack(spacing: 3) {
+
+            Button { choosing = true } label: {
+                HStack(spacing: 4) {
                     Text(ActionCatalogue.title(of: tag, in: entries))
+                        .font(.system(size: 12))
+                        .foregroundStyle(tag.isEmpty ? Chrome.faint : Chrome.text)
                         .lineLimit(1)
-                        .foregroundStyle(tag.isEmpty ? .secondary : .primary)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(Chrome.faint)
                 }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Chrome.fill)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Chrome.hairline, lineWidth: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
             .buttonStyle(.plain)
             .popover(isPresented: $choosing, arrowEdge: .bottom) {
                 ActionChooser(entries: entries, tag: $tag, showing: $choosing)
             }
         }
+        .padding(.horizontal, Chrome.gutter)
+        .padding(.vertical, 5)
+        .background(hovered ? Chrome.hover : Color.clear)
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
     }
 }
 
@@ -104,36 +127,33 @@ private struct ActionChooser: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search actions", text: $search)
-                    .textFieldStyle(.plain)
-                    .focused($focused)
-                if !search.isEmpty {
-                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                }
+            SearchRow(text: $search, placeholder: "Search actions", focused: $focused) {
+                EmptyView()
             }
-            .padding(8)
-            Divider()
+            Hairline()
 
-            List {
-                Button("— none —") { choose("") }
-                    .buttonStyle(.plain)
-                ForEach(groups, id: \.self) { group in
-                    Section(group) {
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Clearing the binding sits above the groups rather than
+                    // inside one: it belongs to no family of actions.
+                    ChooserRow(title: "— none —", isSelected: tag.isEmpty) { choose("") }
+
+                    ForEach(groups, id: \.self) { group in
+                        SectionHeader(title: group)
                         ForEach(filtered.filter { $0.group == group }) { entry in
-                            Button(entry.title) { choose(entry.tag) }
-                                .buttonStyle(.plain)
+                            ChooserRow(title: entry.title,
+                                       isSelected: entry.tag == tag) { choose(entry.tag) }
                         }
                     }
+
+                    if filtered.isEmpty {
+                        HintText(text: "Nothing matches “\(search)”.")
+                            .padding(.top, 14)
+                    }
                 }
-                if filtered.isEmpty {
-                    Text("Nothing found").foregroundStyle(.secondary)
-                }
+                .padding(.vertical, 6)
             }
-            .listStyle(.inset)
+            .scrollIndicators(.hidden)
         }
         .frame(width: 320, height: 380)
         .panelChrome()
@@ -169,35 +189,35 @@ struct AppChooser: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search apps", text: $search)
-                    .textFieldStyle(.plain)
-                    .focused($focused)
-                if !search.isEmpty {
-                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                }
+            SearchRow(text: $search, placeholder: "Search apps", focused: $focused) {
+                EmptyView()
             }
-            .padding(8)
-            Divider()
+            Hairline()
 
-            List {
-                ForEach(filtered, id: \.bundleID) { app in
-                    Button(app.name) {
-                        onPick(app.bundleID)
-                        showing = false
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(filtered, id: \.bundleID) { app in
+                        ChooserRow(title: app.name) {
+                            onPick(app.bundleID)
+                            showing = false
+                        }
                     }
-                    .buttonStyle(.plain)
+                    if filtered.isEmpty {
+                        HintText(text: search.isEmpty
+                                 ? "Every installed app is already on the list."
+                                 : "Nothing matches “\(search)”.")
+                            .padding(.top, 14)
+                    }
                 }
-                if filtered.isEmpty {
-                    Text("Nothing found").foregroundStyle(.secondary)
-                }
+                .padding(.vertical, 6)
             }
-            .listStyle(.inset)
+            .scrollIndicators(.hidden)
         }
-        .frame(width: 280, height: 320)
+        .frame(width: 300, height: 340)
+        // The chooser used to come up in the system's own light plate: it was
+        // the one surface in the app that had never been given the dark chrome.
+        .panelChrome()
+        .clearPopoverBackground()
         .onAppear { focused = true }
     }
 }
