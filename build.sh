@@ -21,6 +21,7 @@ swiftc -O -o "$BIN" \
     $(ls Sources/*.swift | grep -v 'main\.swift$') Sources/main.swift \
     -framework AppKit -framework ServiceManagement
 cp Info.plist "$STAGE/$APP/Contents/Info.plist"
+cp Resources/AppIcon.icns "$STAGE/$APP/Contents/Resources/AppIcon.icns"
 
 xattr -cr "$STAGE/$APP"
 
