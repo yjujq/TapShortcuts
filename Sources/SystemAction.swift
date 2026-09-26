@@ -82,7 +82,6 @@ enum SystemAction: String, CaseIterable, Identifiable {
                 set dark mode to not dark mode
             end tell
             """)
-            script("tell application \"Finder\" to empty trash")
         }
     }
 
