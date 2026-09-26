@@ -179,6 +179,21 @@ bound to something; otherwise the single fires at once.
 makes no difference for ⌘W, but the app switcher waits precisely for Command to
 be released, or it stays on screen instead of completing the switch.
 
+**Keys are read from the keyboard layout, not from a list.** They were once
+listed by hand, and the list had no digits: both screenshot actions did nothing
+at all, their only complaint going to a log that hides a non-system process's
+text. A list is wrong in principle too. Applications match ⌘Q by the character,
+so on AZERTY the Q sits where QWERTY has its A. The layout asked is the
+ASCII-capable one the system itself falls back to for shortcuts — with a Russian
+layout active, no key types a "w" at all.
+
+**System shortcuts are the exception, sent by key code.** The system matches
+them that way, and looked up by character they would break: on AZERTY the "4" is
+found only on the keypad, which the screenshot shortcut ignores. Their codes and
+modifiers are read from the user's own `com.apple.symbolichotkeys`, so a shortcut
+moved in System Settings is followed, and one switched off there shows as off in
+the action list rather than going nowhere without a word.
+
 **Media keys travel as a special event** — subtype 8, with the key code and
 state packed into the data field. The system does not accept ordinary key
 presses for volume and brightness.

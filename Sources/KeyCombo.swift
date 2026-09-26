@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 /// Sending a key combination.
 ///
@@ -6,26 +7,82 @@ import AppKit
 /// only lets trusted applications post synthetic key events. Without it the
 /// call silently does nothing.
 enum KeyCombo {
-    /// Written as a string such as "cmd+w" or "cmd+shift+t".
-    /// Parsed here so the setting stays readable in the plist.
-    private static let keyCodes: [String: CGKeyCode] = [
-        "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7,
-        "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
-        "y": 16, "t": 17, "o": 31, "u": 32, "i": 34, "p": 35, "l": 37,
-        "j": 38, "k": 40, "n": 45, "m": 46,
-        "tab": 48, "space": 49, "return": 36, "escape": 53, "delete": 51,
-        "left": 123, "right": 124, "down": 125, "up": 126,
-        "f1": 122, "f2": 120, "f3": 99, "f4": 118, "f5": 96, "f6": 97,
+    /// Keys that produce no character. Their codes are the same on every
+    /// layout, so for these alone a table is the right tool.
+    private static let namedKeys: [String: Int] = [
+        "tab": kVK_Tab, "space": kVK_Space, "return": kVK_Return,
+        "escape": kVK_Escape, "delete": kVK_Delete, "forwarddelete": kVK_ForwardDelete,
+        "left": kVK_LeftArrow, "right": kVK_RightArrow,
+        "down": kVK_DownArrow, "up": kVK_UpArrow,
+        "home": kVK_Home, "end": kVK_End,
+        "pageup": kVK_PageUp, "pagedown": kVK_PageDown,
+        "f1": kVK_F1, "f2": kVK_F2, "f3": kVK_F3, "f4": kVK_F4, "f5": kVK_F5,
+        "f6": kVK_F6, "f7": kVK_F7, "f8": kVK_F8, "f9": kVK_F9, "f10": kVK_F10,
+        "f11": kVK_F11, "f12": kVK_F12, "f13": kVK_F13, "f14": kVK_F14,
+        "f15": kVK_F15, "f16": kVK_F16, "f17": kVK_F17, "f18": kVK_F18,
+        "f19": kVK_F19, "f20": kVK_F20,
     ]
 
-    static func send(_ description: String) {
+    /// Character keys, read from a keyboard layout rather than listed by hand.
+    ///
+    /// They were listed by hand once, and the list had no digits: the two
+    /// screenshot actions did nothing at all for as long as it existed, with
+    /// the only complaint going to NSLog, which hides the text of a non-system
+    /// process. A list is also wrong in principle. An application matches ⌘Q by
+    /// the character, not by the key: on AZERTY the Q sits where QWERTY has its
+    /// A, and a fixed code would have sent ⌘A.
+    ///
+    /// Built afresh on every call rather than cached. It is 128 lookups, a
+    /// gesture comes a few times a minute at most, and a cache would have to
+    /// watch for layout changes to stay right.
+    static func characterKeys(in source: TISInputSource,
+                              commandHeld: Bool) -> [String: CGKeyCode] {
+        guard let property = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
+            return [:]
+        }
+        let data = Unmanaged<CFData>.fromOpaque(property).takeUnretainedValue() as Data
+        // Asked with Command held when the combination holds it: layouts such
+        // as "Dvorak – QWERTY ⌘" switch to QWERTY exactly then.
+        let modifiers = commandHeld ? UInt32((cmdKey >> 8) & 0xFF) : 0
+        var map: [String: CGKeyCode] = [:]
+        data.withUnsafeBytes { buffer in
+            guard let layout = buffer.bindMemory(to: UCKeyboardLayout.self).baseAddress else { return }
+            for code in 0..<128 {
+                var deadKeys: UInt32 = 0
+                var length = 0
+                var chars = [UniChar](repeating: 0, count: 4)
+                let status = UCKeyTranslate(layout, UInt16(code), UInt16(kUCKeyActionDisplay),
+                                            modifiers, UInt32(LMGetKbdType()),
+                                            OptionBits(1 << kUCKeyTranslateNoDeadKeysBit),
+                                            &deadKeys, chars.count, &length, &chars)
+                guard status == noErr, length > 0 else { continue }
+                let key = String(utf16CodeUnits: chars, count: length).lowercased()
+                // The first code wins. The main row comes before the keypad,
+                // so "4" is the key above R and T, not keypad 4.
+                if map[key] == nil { map[key] = CGKeyCode(code) }
+            }
+        }
+        return map
+    }
+
+    /// The layout asked is the ASCII-capable one: the layout the system itself
+    /// falls back to for shortcuts. With a Russian layout active no key types a
+    /// "w" at all, and the system reads ⌘Ц as ⌘W through exactly this fallback.
+    /// With a Latin layout active, it is simply that layout.
+    private static func characterKeys(commandHeld: Bool) -> [String: CGKeyCode] {
+        guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?
+            .takeRetainedValue() else { return [:] }
+        return characterKeys(in: source, commandHeld: commandHeld)
+    }
+
+    /// The key and modifiers for a combination written as "cmd+w", or nil
+    /// when any part of it is not recognised — in which case nothing should
+    /// be sent, rather than some other combination.
+    static func resolve(_ description: String) -> (code: CGKeyCode, flags: CGEventFlags)? {
         let parts = description.lowercased()
             .split(separator: "+")
             .map { $0.trimmingCharacters(in: .whitespaces) }
-        guard let last = parts.last, let code = keyCodes[last] else {
-            NSLog("TapShortcuts: unrecognised combination \"\(description)\"")
-            return
-        }
+        guard let last = parts.last else { return nil }
 
         var flags: CGEventFlags = []
         for part in parts.dropLast() {
@@ -34,10 +91,31 @@ enum KeyCombo {
             case "shift":           flags.insert(.maskShift)
             case "ctrl", "control": flags.insert(.maskControl)
             case "alt", "opt", "option": flags.insert(.maskAlternate)
-            default: NSLog("TapShortcuts: unknown modifier \"\(part)\"")
+            default: return nil
             }
         }
 
+        if let named = namedKeys[last] { return (CGKeyCode(named), flags) }
+        guard let code = characterKeys(commandHeld: flags.contains(.maskCommand))[last] else {
+            return nil
+        }
+        return (code, flags)
+    }
+
+    /// Sends a combination written as "cmd+w". Returns false, and sends
+    /// nothing, when a part of it is not recognised.
+    @discardableResult
+    static func send(_ description: String) -> Bool {
+        guard let key = resolve(description) else {
+            NSLog("TapShortcuts: unrecognised combination \"\(description)\"")
+            return false
+        }
+        post(code: key.code, flags: key.flags)
+        return true
+    }
+
+    /// Posts a key with its modifiers around it.
+    static func post(code: CGKeyCode, flags: CGEventFlags) {
         guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
 
         // Press and release the modifiers for real rather than only setting

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 /// Ready-made actions on the system.
 ///
@@ -48,17 +49,29 @@ enum SystemAction: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The system shortcut behind this action, where there is one.
+    var hotKey: SystemHotKey? {
+        switch self {
+        case .missionControl:   return .missionControl
+        case .appExpose:        return .appWindows
+        case .showDesktop:      return .showDesktop
+        case .spaceLeft:        return .spaceLeft
+        case .spaceRight:       return .spaceRight
+        case .screenshotScreen: return .screenshotScreen
+        case .screenshotArea:   return .screenshotArea
+        default:                return nil
+        }
+    }
+
     func run() {
         switch self {
         // Window overview and spaces are plain key combinations.
-        case .missionControl: KeyCombo.send("ctrl+up")
-        case .appExpose:      KeyCombo.send("ctrl+down")
-        case .showDesktop:    KeyCombo.send("f11")
-        case .spaceLeft:      KeyCombo.send("ctrl+left")
-        case .spaceRight:     KeyCombo.send("ctrl+right")
+        case .missionControl, .appExpose, .showDesktop, .spaceLeft, .spaceRight,
+             .screenshotScreen, .screenshotArea:
+            hotKey?.send()
+        // Not a system shortcut but the Apple menu's own key equivalent, which
+        // is matched by character like any application's.
         case .lockScreen:     KeyCombo.send("ctrl+cmd+q")
-        case .screenshotScreen: KeyCombo.send("cmd+shift+3")
-        case .screenshotArea:   KeyCombo.send("cmd+shift+4")
 
         case .launchpad:   open(app: "/System/Applications/Launchpad.app")
 
@@ -126,4 +139,68 @@ enum SystemAction: String, CaseIterable, Identifiable {
             event.cgEvent?.post(tap: .cghidEventTap)
         }
     }
+}
+
+/// A shortcut the system itself answers to, sent the way the user has it set.
+///
+/// The system matches these by key code rather than by character, so they are
+/// sent by key code. Looked up by character they would break on AZERTY: the
+/// row above the letters types "&é\"'" there unshifted, a "4" would be found
+/// on the keypad instead, and the screenshot shortcut does not answer to it.
+///
+/// The code and modifiers come from the user's own configuration in
+/// com.apple.symbolichotkeys, falling back to the system default where nothing
+/// is stored. A shortcut moved in System Settings is followed; one switched off
+/// there is known to be off, instead of being sent into the void.
+struct SystemHotKey {
+    let id: Int
+    let defaultCode: Int
+    let defaultFlags: CGEventFlags
+
+    /// The key and modifiers to send, or nil when the user has switched the
+    /// shortcut off.
+    var current: (code: CGKeyCode, flags: CGEventFlags)? {
+        let all = UserDefaults(suiteName: "com.apple.symbolichotkeys")?
+            .dictionary(forKey: "AppleSymbolicHotKeys")
+        guard let entry = all?[String(id)] as? [String: Any] else {
+            return (CGKeyCode(defaultCode), defaultFlags)
+        }
+        if let enabled = entry["enabled"] as? Bool, !enabled { return nil }
+        // Enabled with no value stored means the default — which is how the
+        // spaces shortcuts, 79 and 81, were found stored on this machine.
+        guard let value = entry["value"] as? [String: Any],
+              let parameters = value["parameters"] as? [Int], parameters.count >= 3 else {
+            return (CGKeyCode(defaultCode), defaultFlags)
+        }
+        // Stored as (character, key code, modifier mask); the mask uses the
+        // same bits as CGEventFlags.
+        return (CGKeyCode(parameters[1]), CGEventFlags(rawValue: UInt64(parameters[2])))
+    }
+
+    var isOn: Bool { current != nil }
+
+    @discardableResult
+    func send() -> Bool {
+        guard let key = current else { return false }
+        KeyCombo.post(code: key.code, flags: key.flags)
+        return true
+    }
+
+    // The defaults are the values the system stores for these shortcuts,
+    // read from com.apple.symbolichotkeys rather than recalled — Mission
+    // Control, for one, carries Control alone and no function-key flag.
+    static let screenshotScreen = SystemHotKey(id: 28, defaultCode: kVK_ANSI_3,
+                                               defaultFlags: [.maskShift, .maskCommand])
+    static let screenshotArea   = SystemHotKey(id: 30, defaultCode: kVK_ANSI_4,
+                                               defaultFlags: [.maskShift, .maskCommand])
+    static let missionControl   = SystemHotKey(id: 32, defaultCode: kVK_UpArrow,
+                                               defaultFlags: .maskControl)
+    static let appWindows       = SystemHotKey(id: 33, defaultCode: kVK_DownArrow,
+                                               defaultFlags: .maskControl)
+    static let showDesktop      = SystemHotKey(id: 36, defaultCode: kVK_F11,
+                                               defaultFlags: [])
+    static let spaceLeft        = SystemHotKey(id: 79, defaultCode: kVK_LeftArrow,
+                                               defaultFlags: .maskControl)
+    static let spaceRight       = SystemHotKey(id: 81, defaultCode: kVK_RightArrow,
+                                               defaultFlags: .maskControl)
 }

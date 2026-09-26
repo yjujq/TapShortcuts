@@ -16,8 +16,14 @@ enum ActionCatalogue {
         var entries: [ActionEntry] = [
             ActionEntry(tag: "system:previousApp", title: "Previous app", group: "System")
         ]
-        entries += SystemAction.allCases.map {
-            ActionEntry(tag: "system:" + $0.rawValue, title: $0.title, group: "System")
+        entries += SystemAction.allCases.map { action in
+            // A system shortcut switched off in System Settings is still
+            // offered, but says so: sent, it would go nowhere without a word.
+            let off = action.hotKey.map { !$0.isOn } ?? false
+            return ActionEntry(tag: "system:" + action.rawValue,
+                               title: off ? action.title + " — off in System Settings"
+                                          : action.title,
+                               group: "System")
         }
         entries += KeyCombo.presets.map {
             ActionEntry(tag: "keys:" + $0.combo, title: $0.title, group: "Keys")
