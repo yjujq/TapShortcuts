@@ -64,7 +64,8 @@ Each gesture can be bound to one of:
   moving between spaces, lock screen, sleep display, playback and tracks,
   volume, brightness, screenshots, dark mode;
 - **previous application** — directly, without the switcher;
-- **a key combination** — a dozen common ones in the list;
+- **a key combination** — a dozen common ones in the list, or any other,
+  recorded in the chooser;
 - **opening an application** — any that is installed;
 - **a shortcut** — any installed in the system.
 
@@ -186,6 +187,29 @@ text. A list is wrong in principle too. Applications match ⌘Q by the character
 so on AZERTY the Q sits where QWERTY has its A. The layout asked is the
 ASCII-capable one the system itself falls back to for shortcuts — with a Russian
 layout active, no key types a "w" at all.
+
+**A key combination is recorded, not typed in.** "Record a key combination…"
+at the top of the chooser turns it into a recorder: the held modifiers show as
+they are pressed, and the first full combination is bound. A local event monitor
+sees the key before the menus and the panel do, so ⌘W or ⌘Q is captured rather
+than acted on. Escape alone cancels — the panels' own Escape handling stands
+aside while recording, or Escape would close the panel around it. Shortcuts the
+system keeps for itself, such as ⌘⇥ or ⌘Space, never reach an application, and
+the recorder says so rather than seeming to hang.
+
+The same goes for a shortcut another application owns: the system hands the key
+to its owner and nobody else, while the modifiers flow on as usual. Measured with
+DeepL's ⌘⇧2 — ⌘ and ⇧ reached the recorder, the 2 never did. So a press whose
+modifiers come and go with no key between them is read as exactly that, and the
+recorder offers to type the combination in, with the modifiers it did catch
+already filled. Only capturing such a shortcut is impossible. Sending it from a
+gesture works — confirmed with that same ⌘⇧2, which opens DeepL's screen
+translation from a synthetic press just as from a real one.
+
+A recorded combination is stored by character, as "shift+cmd+y", the same form
+a ready one uses, and so it follows a change of layout. One that sends the same
+thing as a ready entry is stored as that entry. A combination naming a key the
+layout lacks shows as "unknown key" instead of failing silently.
 
 **System shortcuts are the exception, sent by key code.** The system matches
 them that way, and looked up by character they would break: on AZERTY the "4" is

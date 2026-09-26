@@ -37,26 +37,10 @@ enum KeyCombo {
     /// watch for layout changes to stay right.
     static func characterKeys(in source: TISInputSource,
                               commandHeld: Bool) -> [String: CGKeyCode] {
-        guard let property = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
-            return [:]
-        }
-        let data = Unmanaged<CFData>.fromOpaque(property).takeUnretainedValue() as Data
-        // Asked with Command held when the combination holds it: layouts such
-        // as "Dvorak – QWERTY ⌘" switch to QWERTY exactly then.
-        let modifiers = commandHeld ? UInt32((cmdKey >> 8) & 0xFF) : 0
         var map: [String: CGKeyCode] = [:]
-        data.withUnsafeBytes { buffer in
-            guard let layout = buffer.bindMemory(to: UCKeyboardLayout.self).baseAddress else { return }
+        withLayout(of: source) { layout in
             for code in 0..<128 {
-                var deadKeys: UInt32 = 0
-                var length = 0
-                var chars = [UniChar](repeating: 0, count: 4)
-                let status = UCKeyTranslate(layout, UInt16(code), UInt16(kUCKeyActionDisplay),
-                                            modifiers, UInt32(LMGetKbdType()),
-                                            OptionBits(1 << kUCKeyTranslateNoDeadKeysBit),
-                                            &deadKeys, chars.count, &length, &chars)
-                guard status == noErr, length > 0 else { continue }
-                let key = String(utf16CodeUnits: chars, count: length).lowercased()
+                guard let key = translate(layout, code: code, commandHeld: commandHeld) else { continue }
                 // The first code wins. The main row comes before the keypad,
                 // so "4" is the key above R and T, not keypad 4.
                 if map[key] == nil { map[key] = CGKeyCode(code) }
@@ -69,10 +53,108 @@ enum KeyCombo {
     /// falls back to for shortcuts. With a Russian layout active no key types a
     /// "w" at all, and the system reads ⌘Ц as ⌘W through exactly this fallback.
     /// With a Latin layout active, it is simply that layout.
+    private static var shortcutLayout: TISInputSource? {
+        TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue()
+    }
+
     private static func characterKeys(commandHeld: Bool) -> [String: CGKeyCode] {
-        guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?
-            .takeRetainedValue() else { return [:] }
+        guard let source = shortcutLayout else { return [:] }
         return characterKeys(in: source, commandHeld: commandHeld)
+    }
+
+    private static func withLayout(of source: TISInputSource,
+                                   _ body: (UnsafePointer<UCKeyboardLayout>) -> Void) {
+        guard let property = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
+            return
+        }
+        let data = Unmanaged<CFData>.fromOpaque(property).takeUnretainedValue() as Data
+        data.withUnsafeBytes { buffer in
+            guard let layout = buffer.bindMemory(to: UCKeyboardLayout.self).baseAddress else { return }
+            body(layout)
+        }
+    }
+
+    /// The character one key types, or nil for a key that types nothing
+    /// nameable — a control character or a blank.
+    ///
+    /// Asked with Command held when the combination holds it: layouts such as
+    /// "Dvorak – QWERTY ⌘" switch to QWERTY exactly then.
+    private static func translate(_ layout: UnsafePointer<UCKeyboardLayout>,
+                                  code: Int, commandHeld: Bool) -> String? {
+        let modifiers = commandHeld ? UInt32((cmdKey >> 8) & 0xFF) : 0
+        var deadKeys: UInt32 = 0
+        var length = 0
+        var chars = [UniChar](repeating: 0, count: 4)
+        let status = UCKeyTranslate(layout, UInt16(code), UInt16(kUCKeyActionDisplay),
+                                    modifiers, UInt32(LMGetKbdType()),
+                                    OptionBits(1 << kUCKeyTranslateNoDeadKeysBit),
+                                    &deadKeys, chars.count, &length, &chars)
+        guard status == noErr, length > 0 else { return nil }
+        let key = String(utf16CodeUnits: chars, count: length).lowercased()
+        guard !key.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+              !key.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return key
+    }
+
+    /// A key pressed while recording, written back as "cmd+shift+y" — the
+    /// same form a ready combination uses, so it is stored and sent the same
+    /// way. Nil for a key that has no name, such as keypad Enter.
+    ///
+    /// Stored by character rather than by key code, and so it follows the
+    /// layout: ⌘Q recorded on QWERTY stays ⌘Q after a switch to AZERTY.
+    static func describe(code: CGKeyCode, modifiers: NSEvent.ModifierFlags) -> String? {
+        var parts: [String] = []
+        if modifiers.contains(.control) { parts.append("ctrl") }
+        if modifiers.contains(.option)  { parts.append("alt") }
+        if modifiers.contains(.shift)   { parts.append("shift") }
+        if modifiers.contains(.command) { parts.append("cmd") }
+
+        var key = namedKeys.first(where: { $0.value == Int(code) })?.key
+        if key == nil, let source = shortcutLayout {
+            withLayout(of: source) { layout in
+                key = translate(layout, code: Int(code), commandHeld: modifiers.contains(.command))
+            }
+        }
+        guard var name = key else { return nil }
+        // "+" separates the parts, so the key itself goes by a name.
+        if name == "+" { name = "plus" }
+        return (parts + [name]).joined(separator: "+")
+    }
+
+    /// Modifiers the way the system prints them, in the system's order.
+    static func glyphs(for modifiers: NSEvent.ModifierFlags) -> String {
+        var out = ""
+        if modifiers.contains(.control) { out += "⌃" }
+        if modifiers.contains(.option)  { out += "⌥" }
+        if modifiers.contains(.shift)   { out += "⇧" }
+        if modifiers.contains(.command) { out += "⌘" }
+        return out
+    }
+
+    /// A combination the way the system prints a shortcut: "⇧⌘Y".
+    static func display(_ description: String) -> String {
+        let parts = description.lowercased()
+            .split(separator: "+")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        guard let last = parts.last else { return description }
+
+        var modifiers: NSEvent.ModifierFlags = []
+        for part in parts.dropLast() {
+            switch part {
+            case "cmd", "command":       modifiers.insert(.command)
+            case "shift":                modifiers.insert(.shift)
+            case "ctrl", "control":      modifiers.insert(.control)
+            case "alt", "opt", "option": modifiers.insert(.option)
+            default: break
+            }
+        }
+        let names: [String: String] = [
+            "tab": "⇥", "space": "Space", "return": "↩", "escape": "⎋",
+            "delete": "⌫", "forwarddelete": "⌦",
+            "left": "←", "right": "→", "down": "↓", "up": "↑",
+            "home": "↖", "end": "↘", "pageup": "⇞", "pagedown": "⇟", "plus": "+",
+        ]
+        return glyphs(for: modifiers) + (names[last] ?? last.uppercased())
     }
 
     /// The key and modifiers for a combination written as "cmd+w", or nil
@@ -96,7 +178,9 @@ enum KeyCombo {
         }
 
         if let named = namedKeys[last] { return (CGKeyCode(named), flags) }
-        guard let code = characterKeys(commandHeld: flags.contains(.maskCommand))[last] else {
+        // "+" separates the parts, so the key itself goes by a name.
+        let character = last == "plus" ? "+" : last
+        guard let code = characterKeys(commandHeld: flags.contains(.maskCommand))[character] else {
             return nil
         }
         return (code, flags)
@@ -144,8 +228,8 @@ enum KeyCombo {
     }
 
     /// A ready set to choose from in settings. The list is deliberately
-    /// short: it covers the everyday cases, while unusual ones are written
-    /// straight into the defaults under the bindings.v2 key.
+    /// short: it covers the everyday cases, and anything else is recorded in
+    /// the chooser.
     static let presets: [(title: String, combo: String)] = [
         ("⌘W — close",            "cmd+w"),
         ("⌘⇥ — switch app",       "cmd+tab"),

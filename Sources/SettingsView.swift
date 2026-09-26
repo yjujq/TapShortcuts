@@ -431,7 +431,9 @@ enum SettingsWindow {
             window = w
 
             escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
-                guard event.keyCode == 53 else { return event }   // 53 = Escape
+                // While a key combination is being recorded, Escape cancels the
+                // recording and must not close the panel around it.
+                guard event.keyCode == 53, !ShortcutRecording.active else { return event }   // 53 = Escape
                 MainActor.assumeIsolated { close() }
                 return nil
             }
