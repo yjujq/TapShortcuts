@@ -41,3 +41,11 @@ Swift, AppKit and SwiftUI, no dependencies. Shell commands and scripts can be bo
 ```sh
 defaults write local.tapshortcuts bindings.v2 -dict-add tap4 "shell:open -a Terminal"
 ```
+
+## Privacy
+
+TapShortcuts collects nothing and makes no network connections. Touches are read on your Mac and never stored.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
