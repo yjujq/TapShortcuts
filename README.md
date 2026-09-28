@@ -13,6 +13,16 @@ Turn your trackpad into shortcuts: tap with three fingers to open something, tap
 - Gestures macOS already uses are marked, so you know which ones may not always fire.
 - Lives in the menu bar, with no Dock icon.
 
+## Manual
+
+<img src="docs/gestures.jpg" width="520" alt="Settings, Gestures: bound gestures on top and the action list open">
+
+1. **Click the menu bar icon** and open **Gestures**.
+2. **Click the action next to a gesture** and pick one — type to search, or choose **Record a key combination…** and press it.
+3. **All / Bound / Free** filters the list; bound gestures sit on top. A ⚠ marks gestures macOS may take first.
+4. **Haptic** at the foot of the list sets how hard the trackpad knocks back for that gesture — or leaves it to the default.
+5. **Excluded apps** switches gestures off in apps that use the trackpad themselves, such as games and drawing tools.
+
 ## Install
 
 1. Download **TapShortcuts.zip**, unzip it and move **TapShortcuts.app** to Applications.
