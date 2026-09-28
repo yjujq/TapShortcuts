@@ -61,6 +61,8 @@ enum ActionCatalogue {
 struct ActionPicker: View {
     let gesture: Gesture
     @Binding var tag: String
+    /// The gesture's own haptic strength; nil follows the default.
+    @Binding var haptic: HapticStrength?
     let entries: [ActionEntry]
 
     @State private var choosing = false
@@ -82,6 +84,15 @@ struct ActionPicker: View {
                 .lineLimit(1)
 
             Spacer(minLength: 8)
+
+            if let haptic {
+                // A gesture whose knock differs from the default says so, or
+                // there would be no telling which ones do without opening each.
+                Image(systemName: haptic == .off ? "waveform.slash" : "waveform")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Chrome.faint)
+                    .help("Haptic: \(haptic.title)")
+            }
 
             Button { choosing = true } label: {
                 HStack(spacing: 4) {
@@ -107,7 +118,7 @@ struct ActionPicker: View {
             }
             .buttonStyle(.plain)
             .popover(isPresented: $choosing, arrowEdge: .bottom) {
-                ActionChooser(entries: entries, tag: $tag, showing: $choosing)
+                ActionChooser(entries: entries, tag: $tag, haptic: $haptic, showing: $choosing)
             }
         }
         .padding(.horizontal, Chrome.gutter)
@@ -132,6 +143,7 @@ enum ShortcutRecording {
 private struct ActionChooser: View {
     let entries: [ActionEntry]
     @Binding var tag: String
+    @Binding var haptic: HapticStrength?
     @Binding var showing: Bool
 
     private enum Mode { case list, recording, typing }
@@ -179,7 +191,9 @@ private struct ActionChooser: View {
             case .typing:    typer
             }
         }
-        .frame(width: 320, height: 380)
+        // 360 rather than 320: the haptic strip below needs 285 points for its
+        // five segments — measured, not guessed — and at 320 it did not fit.
+        .frame(width: 360, height: 380)
         .panelChrome()
         .clearPopoverBackground()
         .onAppear { focused = true }
@@ -223,6 +237,23 @@ private struct ActionChooser: View {
                 .padding(.vertical, 6)
             }
             .scrollIndicators(.hidden)
+
+            // The gesture's own knock sits here, where the gesture is set up,
+            // rather than as a column on every row of the long list. Choosing
+            // a strength plays it and leaves the list open.
+            Hairline()
+            HStack(spacing: 10) {
+                Text("Haptic")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Chrome.dim)
+                Spacer(minLength: 0)
+                Segmented(options: [(value: nil, label: "Default")]
+                                   + HapticStrength.allCases.map { (value: Optional($0), label: $0.title) },
+                          selection: $haptic)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Chrome.band)
         }
     }
 

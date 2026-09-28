@@ -20,6 +20,22 @@ final class Store: ObservableObject {
 
     /// Guards against accidental triggers: palm rejection, plus silence while
     /// typing and while a mouse button is held.
+    /// How hard the trackpad knocks back when a gesture fires.
+    @Published var haptics: HapticStrength = .medium {
+        didSet { defaults.set(haptics.rawValue, forKey: "haptics") }
+    }
+
+    /// A gesture's own strength, where it differs from the default above.
+    /// A gesture with no entry follows the default, so there is no setting
+    /// four dozen of them one by one.
+    @Published var hapticOverrides: [String: String] = [:] {
+        didSet { defaults.set(hapticOverrides, forKey: "hapticOverrides") }
+    }
+
+    func haptic(for gesture: Gesture) -> HapticStrength {
+        hapticOverrides[gesture.rawValue].flatMap(HapticStrength.init) ?? haptics
+    }
+
     @Published var falseGuards = true {
         didSet { defaults.set(falseGuards, forKey: "falseGuards") }
     }
@@ -61,6 +77,8 @@ final class Store: ObservableObject {
             defaults.set(bindings, forKey: key)
         }
         falseGuards = defaults.object(forKey: "falseGuards") as? Bool ?? true
+        haptics = defaults.string(forKey: "haptics").flatMap(HapticStrength.init) ?? .medium
+        hapticOverrides = defaults.dictionary(forKey: "hapticOverrides") as? [String: String] ?? [:]
         excludedApps = defaults.stringArray(forKey: excludedKey) ?? []
         launchAtLogin = LoginItem.isEnabled
     }

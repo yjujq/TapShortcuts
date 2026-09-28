@@ -66,6 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard store.enabled, !store.frontmostIsExcluded else { return }
         let action = store.action(for: gesture)
         if case .none = action { return }
+        // Felt before the action runs, so the answer comes the moment the
+        // gesture is recognised rather than after whatever the action does.
+        Haptics.play(store.haptic(for: gesture))
         action.run()
         flash()
     }

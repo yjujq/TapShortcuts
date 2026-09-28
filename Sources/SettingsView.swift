@@ -172,6 +172,15 @@ struct SettingsView: View {
                                ? nil
                                : "Palm rejection and the pause after typing are off.",
                            toggle: $store.falseGuards)
+                // Choosing a strength plays it: the motor's patterns are
+                // undocumented numbers, and only a finger can tell them apart.
+                SettingRow(title: "Haptic feedback",
+                           subtitle: "The default. A gesture can set its own in its action list.") {
+                    Segmented(options: HapticStrength.allCases.map { ($0, $0.title) },
+                              selection: Binding(
+                                  get: { store.haptics },
+                                  set: { store.haptics = $0; Haptics.play($0) }))
+                }
 
                 SectionHeader(title: "System")
                 SettingRow(title: "Launch at login", toggle: $store.launchAtLogin)
@@ -293,6 +302,7 @@ struct SettingsView: View {
     private func gestureRow(_ gesture: Gesture) -> some View {
         ActionPicker(gesture: gesture,
                      tag: binding(for: gesture),
+                     haptic: hapticBinding(for: gesture),
                      entries: entries)
     }
 
@@ -338,6 +348,18 @@ struct SettingsView: View {
     private func openAccessibility() {
         let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
         if let url = URL(string: url) { NSWorkspace.shared.open(url) }
+    }
+
+    /// A gesture's own haptic strength; nil follows the default. Choosing one
+    /// plays what the gesture will now feel like.
+    private func hapticBinding(for gesture: Gesture) -> Binding<HapticStrength?> {
+        Binding(
+            get: { store.hapticOverrides[gesture.rawValue].flatMap(HapticStrength.init) },
+            set: { new in
+                store.hapticOverrides[gesture.rawValue] = new?.rawValue
+                Haptics.play(new ?? store.haptics)
+            }
+        )
     }
 
     private func binding(for gesture: Gesture) -> Binding<String> {

@@ -9,6 +9,7 @@ Turn your trackpad into shortcuts: tap with three fingers to open something, tap
 - 39 gestures: taps and double taps with 2–5 fingers, holds, a tap beside a resting finger, swipes, pinches, rotation and corner taps.
 - Bind any of them to a system action (Mission Control, spaces, screenshots, volume, dark mode…), the previous app, a key combination you record, an app or a Shortcut.
 - Stays quiet while you type, ignores your palm, and can be switched off in chosen apps such as games and drawing tools.
+- The trackpad knocks back when a gesture runs — Light, Medium or Strong, or off, and each gesture can have its own.
 - Gestures macOS already uses are marked, so you know which ones may not always fire.
 - Lives in the menu bar, with no Dock icon.
 
