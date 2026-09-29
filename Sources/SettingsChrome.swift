@@ -395,9 +395,19 @@ struct HintText: View {
 struct ChooserRow: View {
     let title: String
     var isSelected = false
+    /// Where the keyboard stands. Drawn stronger than a hover, and never
+    /// moved by the mouse: hovering a row must not carry the keyboard's place
+    /// away with it, nor scroll the list under the pointer.
+    var isHighlighted = false
     let action: () -> Void
 
     @State private var hovered = false
+
+    private var fill: Color {
+        if isHighlighted { return Chrome.picked }
+        if hovered { return Chrome.hover }
+        return .clear
+    }
 
     var body: some View {
         Button(action: action) {
@@ -416,7 +426,7 @@ struct ChooserRow: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(hovered ? Chrome.hover : Color.clear)
+            .background(fill)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

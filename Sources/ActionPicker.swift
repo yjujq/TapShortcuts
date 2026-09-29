@@ -130,11 +130,12 @@ struct ActionPicker: View {
 }
 
 
-/// Set while a key combination is being recorded, so the panels' own Escape
-/// handling stands aside: Escape then cancels the recording rather than
-/// closing the panel it happens in.
-enum ShortcutRecording {
-    static var active = false
+/// Set while a chooser is open, so the panels' own Escape handling stands
+/// aside. Escape then closes the chooser, or cancels a recording inside it,
+/// rather than closing the whole panel around it — which is what it used to
+/// do, taking the settings down with it.
+enum EscapeOwner {
+    static var claimed = false
 }
 
 /// The chooser: a search field and the filtered list side by side, so what
@@ -166,6 +167,13 @@ private struct ActionChooser: View {
 
     @State private var typed = ""
 
+    /// Which row the keyboard is on, as an index into `choices`. Hovering
+    /// moves it too, so the mouse and the keyboard never light two rows at
+    /// once — which was the whole of the trouble.
+    @State private var highlighted = 0
+    /// Bumped whenever the keyboard moves the highlight, and only then.
+    @State private var scrollTick = 0
+
     private var groups: [String] {
         var seen: [String] = []
         for e in filtered where !seen.contains(e.group) { seen.append(e.group) }
@@ -175,6 +183,87 @@ private struct ActionChooser: View {
     private var filtered: [ActionEntry] {
         guard !search.isEmpty else { return entries }
         return entries.filter { $0.title.localizedCaseInsensitiveContains(search) }
+    }
+
+    /// What the list can land on, in the order it is drawn.
+    private enum Choice: Equatable {
+        case clear
+        case record
+        case entry(String)
+    }
+
+    /// One drawn line: a group heading, or a row with its place in `choices`.
+    ///
+    /// Headings and rows are built into one list rather than laid out as the
+    /// list is drawn, so the keyboard's idea of the order and what is on
+    /// screen cannot fall out of step.
+    private struct Line: Identifiable {
+        let id: String
+        var header: String? = nil
+        var choice: Choice? = nil
+        var index: Int? = nil
+        var title = ""
+        var isSelected = false
+    }
+
+    private var lines: [Line] {
+        var out: [Line] = []
+        var index = 0
+        func row(_ choice: Choice, _ title: String, _ isSelected: Bool) {
+            out.append(Line(id: "row-\(index)", choice: choice, index: index,
+                            title: title, isSelected: isSelected))
+            index += 1
+        }
+        // Clearing the binding and recording one sit above the groups rather
+        // than inside one: they belong to no family of actions.
+        row(.clear, "— none —", tag.isEmpty)
+        row(.record,
+            customCombo.map { KeyCombo.display($0) + " — record again…" }
+                ?? "Record a key combination…",
+            customCombo != nil)
+        for group in groups {
+            out.append(Line(id: "head-" + group, header: group))
+            for entry in filtered where entry.group == group {
+                row(.entry(entry.tag), entry.title, entry.tag == tag)
+            }
+        }
+        return out
+    }
+
+    private var choices: [Choice] { lines.compactMap(\.choice) }
+
+    /// Where the highlight starts: on the action the gesture already has, so
+    /// opening the chooser and pressing Return changes nothing. Landing on
+    /// "— none —" instead, it would have cleared the binding.
+    private var currentIndex: Int? {
+        choices.firstIndex { choice in
+            switch choice {
+            case .clear:            return tag.isEmpty
+            case .record:           return customCombo != nil
+            case .entry(let entry): return entry == tag
+            }
+        }
+    }
+
+    private var firstEntryIndex: Int? {
+        choices.firstIndex { if case .entry = $0 { return true } else { return false } }
+    }
+
+    private func activate(_ choice: Choice) {
+        switch choice {
+        case .clear:            choose("")
+        case .record:           startRecording()
+        case .entry(let entry): choose(entry)
+        }
+    }
+
+    private func move(_ delta: Int) {
+        let count = choices.count
+        guard count > 0 else { return }
+        // Clamped rather than wrapped: at the end of a long list, an arrow
+        // that jumped back to the top would lose the eye.
+        highlighted = min(max(highlighted + delta, 0), count - 1)
+        scrollTick += 1
     }
 
     /// A key combination bound here that is none of the ready ones.
@@ -196,10 +285,15 @@ private struct ActionChooser: View {
         .frame(width: 360, height: 380)
         .panelChrome()
         .clearPopoverBackground()
-        .onAppear { focused = true }
+        .onAppear {
+            focused = true
+            highlighted = currentIndex ?? 0
+            EscapeOwner.claimed = true
+            installMonitor()
+        }
         // The popover can close under a recording — a click outside does it —
         // and a monitor left behind would swallow every key the app receives.
-        .onDisappear { backToList() }
+        .onDisappear { teardown() }
     }
 
     // MARK: - The list
@@ -211,32 +305,47 @@ private struct ActionChooser: View {
             }
             Hairline()
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Clearing the binding and recording one sit above the
-                    // groups rather than inside one: they belong to no family
-                    // of actions.
-                    ChooserRow(title: "— none —", isSelected: tag.isEmpty) { choose("") }
-                    ChooserRow(title: customCombo.map { KeyCombo.display($0) + " — record again…" }
-                                      ?? "Record a key combination…",
-                               isSelected: customCombo != nil) { startRecording() }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(lines) { line in
+                            if let header = line.header {
+                                SectionHeader(title: header)
+                            } else if let choice = line.choice, let index = line.index {
+                                ChooserRow(title: line.title,
+                                           isSelected: line.isSelected,
+                                           isHighlighted: index == highlighted) {
+                                    activate(choice)
+                                }
+                                .id(index)
+                            }
+                        }
 
-                    ForEach(groups, id: \.self) { group in
-                        SectionHeader(title: group)
-                        ForEach(filtered.filter { $0.group == group }) { entry in
-                            ChooserRow(title: entry.title,
-                                       isSelected: entry.tag == tag) { choose(entry.tag) }
+                        if filtered.isEmpty {
+                            HintText(text: "Nothing matches “\(search)”.")
+                                .padding(.top, 14)
                         }
                     }
-
-                    if filtered.isEmpty {
-                        HintText(text: "Nothing matches “\(search)”.")
-                            .padding(.top, 14)
+                    .padding(.vertical, 6)
+                }
+                .scrollIndicators(.hidden)
+                // Driven by the tick rather than by the highlight itself, so
+                // only the arrows scroll. Watching the highlight dragged the
+                // list around under the pointer as the mouse crossed rows.
+                // A counter rather than the index: two presses landing on the
+                // same row still each ask for a scroll.
+                .onChange(of: scrollTick) { _, _ in
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        proxy.scrollTo(highlighted, anchor: .center)
                     }
                 }
-                .padding(.vertical, 6)
             }
-            .scrollIndicators(.hidden)
+            .onChange(of: search) { _, _ in
+                // After a query the row worth landing on is the first match,
+                // not "— none —" at the top.
+                highlighted = search.isEmpty ? 0 : (firstEntryIndex ?? 0)
+                scrollTick += 1
+            }
 
             // The gesture's own knock sits here, where the gesture is set up,
             // rather than as a column on every row of the long list. Choosing
@@ -300,12 +409,18 @@ private struct ActionChooser: View {
         peak = []
         swallowed = nil
         mode = .recording
-        ShortcutRecording.active = true
-        // A local monitor sees a key before the menus and the panel do, so a
-        // recorded ⌘W or ⌘Q is captured instead of acted on. It is called on
-        // the main thread, which is what makes the assertion below sound —
-        // unlike the trackpad thread, where the same assertion once crashed
-        // the app.
+    }
+
+    /// One monitor for the whole chooser, for as long as it is open.
+    ///
+    /// A local monitor sees a key before the menus and the panel do — which is
+    /// what lets the list answer the arrows while the search field holds
+    /// focus, and lets a recorded ⌘W or ⌘Q be captured instead of acted on.
+    /// It is called on the main thread, which is what makes the assertion
+    /// below sound — unlike the trackpad thread, where the same assertion once
+    /// crashed the app.
+    private func installMonitor() {
+        guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
             // Plain values go in and a verdict comes out: NSEvent is not
             // Sendable, so it cannot be handed back across the assertion.
@@ -313,9 +428,46 @@ private struct ActionChooser: View {
             let keyCode = event.keyCode
             let modifiers = event.modifierFlags.intersection([.control, .option, .shift, .command])
             let swallow = MainActor.assumeIsolated {
-                record(isModifierChange: isModifierChange, keyCode: keyCode, modifiers: modifiers)
+                handle(isModifierChange: isModifierChange, keyCode: keyCode, modifiers: modifiers)
             }
             return swallow ? nil : event
+        }
+    }
+
+    /// Takes one key event; returns whether to swallow it.
+    private func handle(isModifierChange: Bool, keyCode: UInt16,
+                        modifiers: NSEvent.ModifierFlags) -> Bool {
+        switch mode {
+        case .recording:
+            return record(isModifierChange: isModifierChange, keyCode: keyCode, modifiers: modifiers)
+
+        case .typing:
+            // The field handles its own keys; only Escape is taken, to go back
+            // a step rather than close the chooser outright.
+            guard !isModifierChange, keyCode == 53 else { return false }   // 53 = Escape
+            backToList()
+            return true
+
+        case .list:
+            // A modifier held means a shortcut, not navigation: ⌘A in the
+            // search field must still select its text.
+            guard !isModifierChange, modifiers.isEmpty else { return false }
+            switch keyCode {
+            case 126: move(-1); return true                // up
+            case 125: move(1);  return true                // down
+            case 36, 76:                                   // return, keypad enter
+                let list = choices
+                guard highlighted >= 0, highlighted < list.count else { return true }
+                activate(list[highlighted])
+                return true
+            case 53:                                       // Escape
+                // Closes the chooser alone. The panel's own Escape stands
+                // aside meanwhile, or the settings would go down with it.
+                showing = false
+                return true
+            default:
+                return false
+            }
         }
     }
 
@@ -404,7 +556,6 @@ private struct ActionChooser: View {
     /// field's own Escape goes back to the list, and the panel around it must
     /// not close instead.
     private func beginTyping() {
-        removeMonitor()
         held = []
         // What the recorder did catch is kept, so only the key is left to type.
         typed = swallowed.map { prefix(for: $0) } ?? ""
@@ -451,13 +602,19 @@ private struct ActionChooser: View {
     }
 
     private func backToList() {
-        removeMonitor()
         mode = .list
         held = []
         peak = []
         swallowed = nil
         typed = ""
-        ShortcutRecording.active = false
+    }
+
+    /// The chooser is going away, so the monitor goes with it — left behind,
+    /// it would swallow every key the application receives afterwards.
+    private func teardown() {
+        removeMonitor()
+        EscapeOwner.claimed = false
+        backToList()
     }
 
     private func choose(_ newTag: String) {
